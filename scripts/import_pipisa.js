@@ -20,7 +20,16 @@ const anchorCoordinates = {
   'КрасГЭС': { lat: 55.9369, lon: 92.2868, source: 'manual_workspace_seed: Krasnoyarsk HPP water area' },
   'Усть-Мана': { lat: 55.9318, lon: 92.4976, source: 'manual_workspace_seed: Mana confluence water area' },
   'Красноярск': { lat: 56.0106, lon: 92.8526, source: 'manual_workspace_seed: Krasnoyarsk city water area' },
-  'Остров Отдыха': { lat: 55.9935, lon: 92.8298, source: 'manual_workspace_seed: city island water area' }
+  'Остров Отдыха': { lat: 55.9935, lon: 92.8298, source: 'manual_workspace_seed: city island water area' },
+  'Предмостная площадь': { lat: 55.9951, lon: 92.8172, source: 'manual_workspace_seed: bridge access point' },
+  'Остров Татышев': { lat: 56.0208, lon: 92.8944, source: 'manual_workspace_seed: Tatyshev island water area' },
+  'Стрелка': { lat: 56.0181, lon: 92.8872, source: 'manual_workspace_seed: Yenisei-Kacha confluence area' },
+  'Абаканская протока': { lat: 55.9843, lon: 92.7822, source: 'manual_workspace_seed: Abakanskaya channel' },
+  'Пашенный': { lat: 55.9687, lon: 92.7514, source: 'manual_workspace_seed: Pashenny district water access' },
+  'Академгородок': { lat: 55.9972, lon: 92.7625, source: 'manual_workspace_seed: Akademgorodok water access' },
+  'Базаиха': { lat: 55.9825, lon: 92.9204, source: 'manual_workspace_seed: Bazaikha confluence area' },
+  'Торгашино': { lat: 55.9588, lon: 92.8868, source: 'manual_workspace_seed: Torgashino south access' },
+  'Николаевка': { lat: 56.0139, lon: 92.7845, source: 'manual_workspace_seed: Nikolaevka water access' }
 };
 
 const graphBounds = {
