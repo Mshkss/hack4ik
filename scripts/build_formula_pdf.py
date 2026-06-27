@@ -1,5 +1,7 @@
 from pathlib import Path
 
+from PIL import Image as PILImage
+from PIL import ImageDraw, ImageFont
 from reportlab.lib import colors
 from reportlab.lib.enums import TA_CENTER
 from reportlab.lib.pagesizes import A4
@@ -9,6 +11,7 @@ from reportlab.pdfbase import pdfmetrics
 from reportlab.pdfbase.ttfonts import TTFont
 from reportlab.platypus import (
     KeepTogether,
+    Image as RLImage,
     ListFlowable,
     ListItem,
     PageBreak,
@@ -24,7 +27,9 @@ from reportlab.platypus import (
 ROOT = Path(__file__).resolve().parents[1]
 OUT_DIR = ROOT / "docs"
 OUT_PATH = OUT_DIR / "formuly_aerolodki.pdf"
+FORMULA_IMAGE_DIR = ROOT / "tmp" / "formula_pdf_assets"
 FONT_PATH = Path("/System/Library/Fonts/Supplemental/Arial Unicode.ttf")
+FORMULA_IMAGE_INDEX = 0
 
 
 def register_fonts():
@@ -128,8 +133,66 @@ def p(text, style="BodyRu"):
     return Paragraph(text, styles[style])
 
 
+def formula_font(size=30):
+    if FONT_PATH.exists():
+        return ImageFont.truetype(str(FONT_PATH), size)
+    return ImageFont.load_default()
+
+
+def wrap_formula_line(draw, font, line, max_width):
+    if not line:
+        return [""]
+    indent = line[: len(line) - len(line.lstrip())]
+    words = line.lstrip().split(" ")
+    wrapped = []
+    current = indent
+    for word in words:
+        spacer = "" if current == indent else " "
+        candidate = f"{current}{spacer}{word}"
+        width = draw.textbbox((0, 0), candidate, font=font)[2]
+        if width <= max_width or current == indent:
+            current = candidate
+        else:
+            wrapped.append(current)
+            current = f"{indent}  {word}"
+    wrapped.append(current)
+    return wrapped
+
+
 def formula(text):
-    return Preformatted(text.strip(), FORMULA_STYLE)
+    global FORMULA_IMAGE_INDEX
+    FORMULA_IMAGE_INDEX += 1
+    FORMULA_IMAGE_DIR.mkdir(parents=True, exist_ok=True)
+
+    font = formula_font()
+    pad_x = 28
+    pad_y = 22
+    max_text_width = 1120
+    scratch = PILImage.new("RGB", (10, 10), "white")
+    draw = ImageDraw.Draw(scratch)
+    lines = []
+    for raw_line in text.strip().splitlines():
+        lines.extend(wrap_formula_line(draw, font, raw_line.rstrip(), max_text_width))
+
+    bbox = draw.textbbox((0, 0), "Mg", font=font)
+    line_height = max(38, bbox[3] - bbox[1] + 12)
+    width = max_text_width + pad_x * 2
+    height = pad_y * 2 + line_height * max(1, len(lines))
+    image = PILImage.new("RGB", (width, height), "#f4f7f6")
+    draw = ImageDraw.Draw(image)
+    draw.rectangle([0, 0, width - 1, height - 1], outline="#d9e2df", width=2)
+    y = pad_y
+    for line in lines:
+        draw.text((pad_x, y), line, fill="#16211f", font=font)
+        y += line_height
+
+    image_path = FORMULA_IMAGE_DIR / f"formula_{FORMULA_IMAGE_INDEX:02d}.png"
+    image.save(image_path)
+    flowable = RLImage(str(image_path))
+    flowable.drawWidth = 170 * mm
+    flowable.drawHeight = flowable.drawWidth * height / width
+    flowable.hAlign = "LEFT"
+    return flowable
 
 
 def bullets(items):
@@ -229,7 +292,7 @@ def build_story():
             r"""
 m = max(200, m_dry + m_payload)
 
-m_eff = m * k_load
+m_eff = m · k_load
 """,
             "Масса нужна для сопротивления поверхности. Чем тяжелее лодка, тем больше сила, которую нужно преодолеть при движении по воде, льду, шуге или камышу.",
             [
@@ -254,7 +317,7 @@ t_seg = d_seg / V_rec
         (
             "Шаг 3. Число Froude",
             r"""
-Fn = v / sqrt(g * L)
+Fn = v / √(g · L)
 """,
             "Число Froude показывает отношение скорости лодки к характерной волновой скорости корпуса. Это удобный критерий перехода от водоизмещающего режима к глиссированию.",
             [
@@ -270,7 +333,7 @@ m_ref = max(m_dry + 500, 1)
 
 V_planing = max(
     V_min,
-    3.6 * Fn_full * sqrt(g * L) * sqrt(m / m_ref)
+    3.6 · Fn_full · √(g · L) · √(m / m_ref)
 )
 """,
             "Порог глиссирования растет с массой. Тяжелая лодка требует большей скорости, чтобы выйти на устойчивое скольжение.",
@@ -283,20 +346,15 @@ V_planing = max(
         (
             "Шаг 5. Выбор режима движения",
             r"""
-motion = planing
-    if surface allows planing
-    and not narrow waterway
-    and V_rec >= V_planing
-    and Fn >= Fn_full
-    and surface_risk <= 3
+motion =
+  planing,       если surface.planing = true, участок не узкий,
+                 V_rec ≥ V_planing, Fn ≥ Fn_full, surface_risk ≤ 3
 
-motion = transition
-    if surface allows planing
-    and V_rec >= 0.72 * V_planing
-    and Fn >= Fn_on
-    and surface_risk <= 3
+  transition,    если surface.planing = true,
+                 V_rec ≥ 0.72 · V_planing, Fn ≥ Fn_on,
+                 surface_risk ≤ 3
 
-motion = displacement otherwise
+  displacement,  иначе
 """,
             "На каждом участке движок помечает режим движения: глиссирование, переходный режим или водоизмещающий режим.",
             [
@@ -309,13 +367,13 @@ motion = displacement otherwise
             "Шаг 6. Коэффициент сопротивления корпуса",
             r"""
 Cd = Cd_planing
-    if motion = planing
+    если motion = planing
 
 Cd = (Cd_displacement + Cd_planing) / 2
-    if motion = transition
+    если motion = transition
 
 Cd = Cd_displacement
-    if motion = displacement
+    если motion = displacement
 """,
             "В глиссировании сопротивление корпуса ниже, в водоизмещающем режиме выше, а переходный режим находится между ними.",
             [
@@ -327,13 +385,13 @@ Cd = Cd_displacement
             "Шаг 7. Горб сопротивления",
             r"""
 k_hump = 0.72
-    if motion = planing
+    если motion = planing
 
 k_hump = 1.18
-    if motion = transition
+    если motion = transition
 
-k_hump = 1 + 0.42 * (Fn / max(Fn_on, 0.1))^4
-    if motion = displacement
+k_hump = 1 + 0.42 · (Fn / max(Fn_on, 0.1))^4
+    если motion = displacement
 """,
             "Перед выходом на глиссирование лодка может попадать в неэффективную зону: скорость уже высокая, но корпус еще не скользит устойчиво. Это называется горбом сопротивления.",
             [
@@ -344,13 +402,13 @@ k_hump = 1 + 0.42 * (Fn / max(Fn_on, 0.1))^4
         (
             "Шаг 8. Сопротивление участка",
             r"""
-R_dyn = 0.5 * rho_air * A_res * Cd * v^2
+R_dyn = 0.5 · rho_air · A_res · Cd · v^2
 
-R_air = 0.5 * rho_air * A_air * 0.9 * v^2
+R_air = 0.5 · rho_air · A_air · 0.9 · v^2
 
-R_surf = m_eff * g * mu_surface * max(0.55, k_surf)
+R_surf = m_eff · g · mu_surface · max(0.55, k_surf)
 
-R = (R_dyn * k_hump + R_air + R_surf) * max(0.65, k_surf)
+R = (R_dyn · k_hump + R_air + R_surf) · max(0.65, k_surf)
 """,
             "Это прикладная оценка силы, которую должен преодолеть двигатель. В ней есть динамическая часть, воздушное сопротивление и сопротивление поверхности.",
             [
@@ -362,7 +420,7 @@ R = (R_dyn * k_hump + R_air + R_surf) * max(0.65, k_surf)
         (
             "Шаг 9. Требуемая мощность",
             r"""
-P_raw = R * v / (1000 * eta)
+P_raw = R · v / (1000 · eta)
 
 P = clamp(P_raw, P_min, P_max)
 """,
@@ -376,13 +434,13 @@ P = clamp(P_raw, P_min, P_max)
         (
             "Шаг 10. Расход топлива",
             r"""
-q_fuel = P * BSFC * k_mode / (rho_fuel * 1000)
+q_fuel = P · BSFC · k_mode / (rho_fuel · 1000)
 
-F_raw = q_fuel * t_seg
+F_raw = q_fuel · t_seg
 
-F_fallback = d_seg * base_l_per_km * k_surf * k_load * k_mode
+F_fallback = d_seg · base_l_per_km · k_surf · k_load · k_mode
 
-F_seg = max(F_raw, 0.08 * F_fallback)
+F_seg = max(F_raw, 0.08 · F_fallback)
 """,
             "BSFC переводит мощность двигателя в расход топлива. На выходе получается литров в час, затем литры на участок.",
             [
@@ -395,11 +453,11 @@ F_seg = max(F_raw, 0.08 * F_fallback)
         (
             "Шаг 11. Риск участка",
             r"""
-k_speed = 1 + 0.22 * (V_rec / max(V_surface, 1))^2
+k_speed = 1 + 0.22 · (V_rec / max(V_surface, 1))^2
 
-k_narrow = 1.12 if narrow waterway, else 1.00
+k_narrow = 1.12 для узкого waterway, иначе 1.00
 
-Risk_seg = d_seg * r_surface * k_speed * k_narrow
+Risk_seg = d_seg · r_surface · k_speed · k_narrow
 """,
             "Риск растет от опасной поверхности, скорости и узости русла. Поэтому безопасный режим может предпочесть более длинный, но менее рисковый путь.",
             [
@@ -412,12 +470,12 @@ Risk_seg = d_seg * r_surface * k_speed * k_narrow
             "Шаг 12. Стоимость ребра для A*",
             r"""
 C_edge =
-    w_d * d_seg
-  + w_t * (t_seg * 60 / 10)
-  + w_f * (F_seg / 10)
-  + w_r * (Risk_seg / 5)
-  + w_p * P_no_planing
-  + w_h * H_hard
+    w_d · d_seg
+  + w_t · (t_seg · 60 / 10)
+  + w_f · (F_seg / 10)
+  + w_r · (Risk_seg / 5)
+  + w_p · P_no_planing
+  + w_h · H_hard
 """,
             "A* ищет путь с минимальной суммой C_edge. Разные режимы маршрута отличаются весами w.",
             [
@@ -431,12 +489,12 @@ C_edge =
             "Шаг 13. Штрафы за потерю глиссирования и сложные поверхности",
             r"""
 P_no_planing = 0
-    if surface supports planing
+    если surface.planing = true
 
 P_no_planing = d_seg
-    if surface does not support planing
+    если surface.planing = false
 
-H_hard = d_seg if surface is hard, else 0
+H_hard = d_seg для hard-поверхности, иначе 0
 """,
             "Эти штрафы помогают алгоритму избегать участков, где аэролодка идет неэффективно или опасно.",
             [
@@ -447,17 +505,17 @@ H_hard = d_seg if surface is hard, else 0
         (
             "Шаг 14. Итоги маршрута",
             r"""
-D = sum(d_seg)
+D = Σ d_seg
 
-T = sum(t_seg)
+T = Σ t_seg
 
-F = sum(F_seg)
+F = Σ F_seg
 
-Risk = sum(Risk_seg)
+Risk = Σ Risk_seg
 
 Fuel_remain = Fuel_tank - F
 
-Fuel_reserve = Fuel_tank * reserve_frac
+Fuel_reserve = Fuel_tank · reserve_frac
 """,
             "После выбора маршрута движок суммирует длину, время, топливо и риск, а затем проверяет остаток топлива относительно резерва.",
             [
@@ -519,7 +577,12 @@ Fuel_reserve = Fuel_tank * reserve_frac
 
 
 def main():
+    global FORMULA_IMAGE_INDEX
     OUT_DIR.mkdir(parents=True, exist_ok=True)
+    FORMULA_IMAGE_DIR.mkdir(parents=True, exist_ok=True)
+    FORMULA_IMAGE_INDEX = 0
+    for old_image in FORMULA_IMAGE_DIR.glob("formula_*.png"):
+        old_image.unlink()
     doc = SimpleDocTemplate(
         str(OUT_PATH),
         pagesize=A4,

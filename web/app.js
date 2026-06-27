@@ -25,6 +25,9 @@ const els = {
   scenarioLine: document.querySelector('#scenarioLine'),
   startSelect: document.querySelector('#startSelect'),
   finishSelect: document.querySelector('#finishSelect'),
+  startQueryInput: document.querySelector('#startQueryInput'),
+  finishQueryInput: document.querySelector('#finishQueryInput'),
+  locationHints: document.querySelector('#locationHints'),
   pickStartBtn: document.querySelector('#pickStartBtn'),
   pickFinishBtn: document.querySelector('#pickFinishBtn'),
   snapStatus: document.querySelector('#snapStatus'),
@@ -111,6 +114,13 @@ function option(select, value, label = value) {
   select.appendChild(item);
 }
 
+function dataOption(datalist, value) {
+  if (!datalist || !value || [...datalist.options].some((item) => item.value === value)) return;
+  const item = document.createElement('option');
+  item.value = value;
+  datalist.appendChild(item);
+}
+
 function setInput(input, value) {
   if (!input) return;
   input.value = value;
@@ -180,6 +190,7 @@ function fillControls() {
   for (const node of meta.pickableNodes || meta.nodes) {
     option(els.startSelect, node);
     option(els.finishSelect, node);
+    dataOption(els.locationHints, node);
   }
   els.startSelect.value = meta.start;
   els.finishSelect.value = meta.finish;
@@ -232,6 +243,145 @@ function nearestNode(latlng) {
   return best;
 }
 
+function normalizeLocation(value) {
+  return String(value || '')
+    .trim()
+    .toLocaleLowerCase('ru-RU')
+    .replace(/ё/g, 'е')
+    .replace(/\s+/g, ' ');
+}
+
+function parseCoordinateQuery(value) {
+  const match = String(value || '').trim().match(/^(-?\d+(?:[.,]\d+)?)\s*[,;\s]\s*(-?\d+(?:[.,]\d+)?)$/);
+  if (!match) return null;
+  const lat = Number(match[1].replace(',', '.'));
+  const lon = Number(match[2].replace(',', '.'));
+  if (!Number.isFinite(lat) || !Number.isFinite(lon)) return null;
+  if (Math.abs(lat) > 90 || Math.abs(lon) > 180) return null;
+  return { lat, lng: lon };
+}
+
+function resolveLocationQuery(rawValue, target) {
+  const { meta } = state.scenario;
+  const value = String(rawValue || '').trim();
+  if (!value) return null;
+
+  const coordinate = parseCoordinateQuery(value);
+  if (coordinate) {
+    const nearest = nearestNode(coordinate);
+    if (!nearest) throw new Error(`Не нашёл водный граф рядом с точкой ${value}`);
+    return {
+      node: nearest.node,
+      point: { lat: coordinate.lat, lon: coordinate.lng },
+      label: value,
+      source: 'coordinates',
+      distanceKm: nearest.distanceKm
+    };
+  }
+
+  const normalized = normalizeLocation(value);
+  const exactNode = meta.nodes.find((node) => normalizeLocation(node) === normalized);
+  if (exactNode) {
+    const coord = meta.nodeCoordinates[exactNode];
+    return {
+      node: exactNode,
+      point: coord ? { lat: coord.lat, lon: coord.lon } : null,
+      label: exactNode,
+      source: 'node',
+      distanceKm: 0
+    };
+  }
+
+  const candidates = meta.nodes
+    .map((node) => {
+      const nodeText = normalizeLocation(node);
+      const sourceText = normalizeLocation(meta.nodeCoordinates[node]?.source || '');
+      const score = nodeText === normalized ? 0
+        : nodeText.startsWith(normalized) ? 1
+          : nodeText.includes(normalized) ? 2
+            : sourceText.includes(normalized) ? 3
+              : 99;
+      return { node, score };
+    })
+    .filter((item) => item.score < 99)
+    .sort((a, b) => a.score - b.score || a.node.localeCompare(b.node, 'ru'));
+
+  if (!candidates.length) {
+    throw new Error(`${target === 'start' ? 'Старт' : 'Финиш'} не найден. Напиши известную точку из списка или координаты: 55.99, 92.86`);
+  }
+
+  const node = candidates[0].node;
+  const coord = meta.nodeCoordinates[node];
+  return {
+    node,
+    point: coord ? { lat: coord.lat, lon: coord.lon } : null,
+    label: node,
+    source: 'name',
+    distanceKm: 0
+  };
+}
+
+function pointPayload(target, resolved) {
+  if (!resolved?.point) return null;
+  const coord = state.scenario.meta.nodeCoordinates[resolved.node];
+  const distanceKm = coord ? haversineKm(resolved.point, coord) : resolved.distanceKm;
+  return {
+    lat: resolved.point.lat,
+    lon: resolved.point.lon,
+    label: resolved.label,
+    source: resolved.source,
+    snappedNode: resolved.node,
+    snappedDistanceKm: distanceKm
+  };
+}
+
+function resolveEndpoint(target) {
+  const select = target === 'start' ? els.startSelect : els.finishSelect;
+  const input = target === 'start' ? els.startQueryInput : els.finishQueryInput;
+  const query = input?.value?.trim();
+  if (query) {
+    const resolved = resolveLocationQuery(query, target);
+    option(select, resolved.node, resolved.source === 'coordinates' ? `ближайшая вода ${resolved.node}` : resolved.node);
+    select.value = resolved.node;
+    state.customPoints[target] = resolved.source === 'node' ? null : pointPayload(target, resolved);
+    return { node: resolved.node, point: resolved.point, label: resolved.label, source: resolved.source };
+  }
+
+  const node = select.value;
+  if (!state.customPoints[target] || state.customPoints[target].snappedNode !== node) {
+    state.customPoints[target] = null;
+  }
+  return {
+    node,
+    point: state.customPoints[target] ? { lat: state.customPoints[target].lat, lon: state.customPoints[target].lon } : null,
+    label: state.customPoints[target]?.label || node,
+    source: state.customPoints[target]?.source || 'node'
+  };
+}
+
+function buildRouteParams(config = els.configSelect.value, mode = els.modeSelect.value) {
+  const start = resolveEndpoint('start');
+  const finish = resolveEndpoint('finish');
+  const params = new URLSearchParams({
+    start: start.node,
+    finish: finish.node,
+    config,
+    mode
+  });
+  if (start.point) {
+    params.set('startLat', String(start.point.lat));
+    params.set('startLon', String(start.point.lon));
+    params.set('startLabel', start.label);
+  }
+  if (finish.point) {
+    params.set('finishLat', String(finish.point.lat));
+    params.set('finishLon', String(finish.point.lon));
+    params.set('finishLabel', finish.label);
+  }
+  appendBoatParams(params);
+  return params;
+}
+
 function setPickMode(mode) {
   state.pickMode = state.pickMode === mode ? null : mode;
   els.pickStartBtn.classList.toggle('active', state.pickMode === 'start');
@@ -252,9 +402,13 @@ async function applyMapPick(latlng) {
   state.customPoints[target] = {
     lat: latlng.lat,
     lon: latlng.lng,
+    label: `${fmt(latlng.lat, 5)}, ${fmt(latlng.lng, 5)}`,
+    source: 'map',
     snappedNode: nearest.node,
     snappedDistanceKm: nearest.distanceKm
   };
+  const queryInput = target === 'start' ? els.startQueryInput : els.finishQueryInput;
+  if (queryInput) queryInput.value = `${latlng.lat.toFixed(6)}, ${latlng.lng.toFixed(6)}`;
   if (target === 'start') els.startSelect.value = nearest.node;
   if (target === 'finish') els.finishSelect.value = nearest.node;
   option(target === 'start' ? els.startSelect : els.finishSelect, nearest.node, `точка графа ${nearest.node}`);
@@ -447,6 +601,7 @@ function drawMap() {
   }
 
   drawPickMarkers();
+  drawAccessLegs();
 
   if (state.result?.ok) {
     const bounds = state.result.route.nodes
@@ -457,6 +612,22 @@ function drawMap() {
       state.map.fitBounds(bounds, { padding: [36, 36], animate: false });
       state.didInitialFit = true;
     }
+  }
+}
+
+function drawAccessLegs() {
+  const legs = state.result?.access_legs || [];
+  for (const leg of legs) {
+    if (!leg.from || !leg.to || leg.distance_km < 0.01) continue;
+    const color = leg.kind === 'start_walk' ? '#0d7772' : '#d6653b';
+    L.polyline([[leg.from.lat, leg.from.lon], [leg.to.lat, leg.to.lon]], {
+      color,
+      weight: 3,
+      opacity: 0.9,
+      dashArray: '2 8'
+    })
+      .bindTooltip(`${leg.label}<br>${fmt(leg.distance_km, 2)} км пешком`)
+      .addTo(state.layers.picks);
   }
 }
 
@@ -499,6 +670,7 @@ function renderSummary() {
   }
 
   const totals = result.totals;
+  const walkDistanceKm = (result.access_legs || []).reduce((sum, leg) => sum + (leg.distance_km || 0), 0);
   const routeNodes = result.route.nodes;
   const routeLabel = routeNodes.length > 6
     ? `${routeNodes[0]} → ${routeNodes[routeNodes.length - 1]} · ${result.route.segments.length} сегм.`
@@ -506,6 +678,7 @@ function renderSummary() {
   els.routeBadge.textContent = routeLabel;
   const metrics = [
     ['Длина', `${fmt(totals.distance_km)} км`],
+    ['Пешком', `${fmt(walkDistanceKm)} км`],
     ['Время', `${fmt(totals.time_min, 0)} мин`],
     ['Топливо', `${fmt(totals.fuel_l)} л`],
     ['Остаток', `${fmt(totals.remainder_l)} л`],
@@ -517,7 +690,8 @@ function renderSummary() {
   `).join('');
 
   const routeAdvice = result.route_advice || [];
-  els.warningsList.innerHTML = listItems([...result.warnings, ...routeAdvice.slice(0, 5)]);
+  const accessAdvice = (result.access_legs || []).map((leg) => `${leg.label}: ${fmt(leg.distance_km, 2)} км пешком.`);
+  els.warningsList.innerHTML = listItems([...result.warnings, ...accessAdvice, ...routeAdvice.slice(0, 5)]);
   renderCalculationInputs(result);
   els.segmentsBody.innerHTML = result.route.segments.map((segment) => `
     <tr>
@@ -539,6 +713,17 @@ function renderSummary() {
         ${segment.hard ? '<span class="tag warn">сложно</span>' : ''}
         <small>${(segment.speed_notes || []).slice(0, 2).join('; ')}</small>
       </td>
+    </tr>
+  `).join('') + (result.access_legs || []).map((leg) => `
+    <tr class="walk-row">
+      <td>${escapeHtml(leg.from_label || leg.from_node || 'точка')}</td>
+      <td>${escapeHtml(leg.to_label || leg.to_node || 'точка')}</td>
+      <td>пеший добор</td>
+      <td>${fmt(leg.distance_km)}</td>
+      <td>${fmt(leg.time_min, 0)}</td>
+      <td>0,0</td>
+      <td>0,0</td>
+      <td class="used-values">Аэролодка идёт до ближайшей достижимой воды, дальше участок показан пунктиром.</td>
     </tr>
   `).join('');
 }
@@ -590,14 +775,8 @@ function renderCalculationInputs(result) {
 async function calculate() {
   els.calculateBtn.disabled = true;
   els.calculateBtn.textContent = 'Считаю маршрут...';
-  const params = new URLSearchParams({
-    start: els.startSelect.value,
-    finish: els.finishSelect.value,
-    config: els.configSelect.value,
-    mode: els.modeSelect.value
-  });
-  appendBoatParams(params);
   try {
+    const params = buildRouteParams();
     state.result = await fetchJson(`/api/route?${params}`);
     renderSummary();
     drawMap();
@@ -618,13 +797,7 @@ async function compareAll() {
   for (const config of Object.keys(raw.configs)) {
     for (const mode of Object.keys(raw.modes)) {
       if (runId !== state.compareRunId) return;
-      const params = new URLSearchParams({
-        start: els.startSelect.value,
-        finish: els.finishSelect.value,
-        config,
-        mode
-      });
-      appendBoatParams(params);
+      const params = buildRouteParams(config, mode);
       const result = await fetchJson(`/api/route?${params}`);
       rows.push({ config, mode, result });
     }
@@ -667,8 +840,6 @@ els.pickStartBtn.addEventListener('click', () => setPickMode('start'));
 els.pickFinishBtn.addEventListener('click', () => setPickMode('finish'));
 
 for (const control of [
-  els.startSelect,
-  els.finishSelect,
   els.configSelect,
   els.modeSelect,
   els.dryMassKgInput,
@@ -690,8 +861,26 @@ for (const control of [
   });
 }
 
+els.startSelect.addEventListener('change', () => {
+  if (els.startQueryInput) els.startQueryInput.value = '';
+  state.customPoints.start = null;
+  runCalculation();
+});
+
+els.finishSelect.addEventListener('change', () => {
+  if (els.finishQueryInput) els.finishQueryInput.value = '';
+  state.customPoints.finish = null;
+  runCalculation();
+});
+
 for (const control of tuningControls()) {
   control.addEventListener('input', () => scheduleCalculation());
+}
+
+for (const control of [els.startQueryInput, els.finishQueryInput]) {
+  if (!control) continue;
+  control.addEventListener('input', () => scheduleCalculation(800));
+  control.addEventListener('change', () => runCalculation());
 }
 
 init().catch((error) => {

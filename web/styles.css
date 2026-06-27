@@ -106,6 +106,10 @@ h3 {
   color: var(--risk);
 }
 
+.walk-row {
+  background: #fff8ef;
+}
+
 .status-pill,
 .route-badge {
   border: 1px solid var(--line);
