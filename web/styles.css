@@ -124,6 +124,28 @@ h3 {
   font-weight: 700;
 }
 
+.status-stack {
+  display: grid;
+  gap: 8px;
+  justify-items: end;
+}
+
+.sensor-pill {
+  color: var(--muted);
+}
+
+.sensor-pill.sensor-online {
+  border-color: rgba(13, 119, 114, 0.3);
+  background: #eef8f4;
+  color: var(--accent);
+}
+
+.sensor-pill.sensor-offline {
+  border-color: #f1c5bb;
+  background: #fff3ef;
+  color: var(--risk);
+}
+
 .layout {
   grid-template-columns: 300px minmax(0, 1fr) 330px;
   align-items: stretch;
@@ -180,6 +202,12 @@ button {
 
 button:hover {
   filter: brightness(0.95);
+}
+
+button:disabled {
+  cursor: not-allowed;
+  filter: none;
+  opacity: 0.58;
 }
 
 .secondary-btn {
@@ -379,6 +407,43 @@ button:hover {
   padding: 24px;
   color: var(--muted);
   text-align: center;
+}
+
+.vessel-marker {
+  border: 0;
+  background: transparent;
+}
+
+.vessel-icon {
+  position: relative;
+  width: 30px;
+  height: 30px;
+  transform-origin: 50% 50%;
+}
+
+.vessel-icon::before {
+  content: "";
+  position: absolute;
+  left: 8px;
+  top: 2px;
+  width: 0;
+  height: 0;
+  border-right: 7px solid transparent;
+  border-bottom: 22px solid var(--accent);
+  border-left: 7px solid transparent;
+  filter: drop-shadow(0 2px 3px rgba(0, 0, 0, 0.28));
+}
+
+.vessel-icon::after {
+  content: "";
+  position: absolute;
+  left: 10px;
+  top: 12px;
+  width: 10px;
+  height: 10px;
+  border: 2px solid #fff;
+  border-radius: 999px;
+  background: var(--accent-2);
 }
 
 .edge {
@@ -645,6 +710,11 @@ tr:last-child td {
 
   .topbar {
     grid-template-columns: 1fr;
+    align-items: start;
+  }
+
+  .status-stack {
+    justify-items: start;
   }
 
   h1 {

@@ -6,6 +6,8 @@ const { execFile } = require('child_process');
 const root = __dirname;
 const port = Number(process.env.PORT || 5173);
 const host = process.env.HOST || '127.0.0.1';
+const sensorStateUrl = process.env.SENSOR_STATE_URL || 'http://127.0.0.1:8081/api/v1/sensor-state';
+const sensorStateTimeoutMs = Number(process.env.SENSOR_STATE_TIMEOUT_MS || 900);
 const enginePath = path.join(root, 'build', 'route_engine');
 const routeDataPath = path.join(root, 'app_data', 'scenario.route');
 const rawScenarioPath = path.join(root, 'app_data', 'pipisa_scenario.json');
@@ -289,7 +291,10 @@ const mimeTypes = {
 };
 
 function sendJson(res, status, value) {
-  res.writeHead(status, { 'Content-Type': 'application/json; charset=utf-8' });
+  res.writeHead(status, {
+    'Content-Type': 'application/json; charset=utf-8',
+    'Cache-Control': 'no-store'
+  });
   res.end(JSON.stringify(value, null, 2));
 }
 
@@ -297,8 +302,75 @@ function readJson(file) {
   return JSON.parse(fs.readFileSync(file, 'utf8'));
 }
 
+function unavailableSensorState(reason) {
+  const updatedAt = new Date().toISOString();
+  return {
+    nmea: {
+      online: false,
+      source: 'unavailable',
+      last_frame_age_ms: 0,
+      updated_at: updatedAt,
+      error: reason || 'sensor source unavailable'
+    },
+    position: {
+      valid: false,
+      lat: null,
+      lon: null,
+      age_ms: 0,
+      updated_at: updatedAt
+    },
+    motion: {
+      valid: false,
+      sog_mps: null,
+      sog_kmh: null,
+      cog_deg: null,
+      heading_deg: null,
+      updated_at: updatedAt
+    },
+    depth: {
+      valid: false,
+      depth_m: null,
+      updated_at: updatedAt
+    },
+    engine: {
+      rpm_valid: false,
+      rpm: null,
+      fuel_rate_valid: false,
+      fuel_rate_lph: null,
+      updated_at: updatedAt
+    }
+  };
+}
+
+async function fetchSensorState() {
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), sensorStateTimeoutMs);
+  try {
+    const response = await fetch(sensorStateUrl, {
+      signal: controller.signal,
+      headers: { Accept: 'application/json' }
+    });
+    const payload = await response.json();
+    if (!response.ok) {
+      throw new Error(payload.error || `Sensor source returned HTTP ${response.status}`);
+    }
+    return payload;
+  } catch (error) {
+    return unavailableSensorState(error.name === 'AbortError' ? 'sensor source timeout' : error.message);
+  } finally {
+    clearTimeout(timeout);
+  }
+}
+
 function route(req, res) {
   const url = new URL(req.url, `http://localhost:${port}`);
+
+  if (url.pathname === '/api/v1/sensor-state') {
+    (async () => {
+      sendJson(res, 200, await fetchSensorState());
+    })();
+    return;
+  }
 
   if (url.pathname === '/api/scenario') {
     try {

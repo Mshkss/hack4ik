@@ -15,6 +15,44 @@ npm start
 http://localhost:5173
 ```
 
+## Demo-датчики и текущая позиция судна
+
+Для имитации бортовых датчиков запустить отдельный локальный simulator:
+
+```bash
+npm run sensor:demo
+```
+
+Во втором терминале запустить основной интерфейс:
+
+```bash
+npm start
+```
+
+Основной backend отдает состояние судна через:
+
+```text
+GET /api/v1/sensor-state
+```
+
+По умолчанию `server.js` читает demo-источник:
+
+```text
+http://127.0.0.1:8081/api/v1/sensor-state
+```
+
+Настройки simulator:
+
+```bash
+PORT=8081 TICK_MS=500 SPEED_MPS=8.5 npm run sensor:demo
+```
+
+Для реального Raspberry Pi/CAN режима frontend менять не нужно: достаточно поднять локальный adapter с тем же JSON-контрактом и указать:
+
+```bash
+SENSOR_STATE_URL=http://127.0.0.1:<adapter-port>/api/v1/sensor-state npm start
+```
+
 ## Запуск в Docker
 
 ```bash
@@ -34,11 +72,14 @@ http://localhost:5173
 | --- | --- |
 | `cpp/route_engine.cpp` | C++ расчетный движок |
 | `scripts/import_pipisa.js` | импорт пользовательского JSON в формат движка |
+| `scripts/demo_sensor_simulator.js` | локальная имитация NMEA/CAN sensor-state |
 | `server.js` | локальный web/API сервер |
 | `web/` | интерфейс |
 | `app_data/` | нормализованные данные приложения |
 | `data/` | исследовательские и seed-данные MVP |
+| `cpp/nmea/` | заготовка будущего CAN/NMEA adapter |
 | `system/real_map_mvp_implementation.md` | описание реализации реальной карты и расчетных артефактов |
+| `docs/nmea_sensor_state.md` | контракт Sensor State API и схема demo/real интеграции |
 | `docs/tz_status_and_roadmap.md` | сверка с ТЗ, список фич и план доработки |
 | `docs/formuly_aerolodki.pdf` | описание расчетных формул в PDF |
 

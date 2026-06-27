@@ -20,7 +20,10 @@
           <h1>Цифровой штурман аэролодки</h1>
           <p id="scenarioLine" class="subtle">Загрузка сценария...</p>
         </div>
-        <div class="status-pill">Расчёт: C++</div>
+        <div class="status-stack">
+          <div class="status-pill">Расчёт: C++</div>
+          <div id="sensorStatus" class="status-pill sensor-pill sensor-offline">NMEA: ожидание</div>
+        </div>
       </section>
 
       <section class="layout">
@@ -46,6 +49,8 @@
           <div class="pick-controls">
             <button id="pickStartBtn" type="button" class="secondary-btn">Поставить старт на карте</button>
             <button id="pickFinishBtn" type="button" class="secondary-btn">Поставить финиш на карте</button>
+            <button id="useGpsStartBtn" type="button" class="secondary-btn">Использовать GPS как старт</button>
+            <p id="sensorDetails" class="hint">Нет актуальной позиции судна.</p>
             <p id="snapStatus" class="hint">Выбирай город/точку из списка, пиши координаты или кликай по карте. Если по воде дальше нельзя, покажем ближайший выход и пеший добор.</p>
           </div>
           <label>

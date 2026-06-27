@@ -1,6 +1,8 @@
 const state = {
   scenario: null,
   result: null,
+  sensorState: null,
+  sensorPollTimer: null,
   compare: [],
   pickMode: null,
   compareRunId: 0,
@@ -17,7 +19,8 @@ const state = {
     graph: null,
     route: null,
     nodes: null,
-    picks: null
+    picks: null,
+    vessel: null
   }
 };
 
@@ -30,7 +33,10 @@ const els = {
   cityHints: document.querySelector('#cityHints'),
   pickStartBtn: document.querySelector('#pickStartBtn'),
   pickFinishBtn: document.querySelector('#pickFinishBtn'),
+  useGpsStartBtn: document.querySelector('#useGpsStartBtn'),
   snapStatus: document.querySelector('#snapStatus'),
+  sensorStatus: document.querySelector('#sensorStatus'),
+  sensorDetails: document.querySelector('#sensorDetails'),
   configSelect: document.querySelector('#configSelect'),
   modeSelect: document.querySelector('#modeSelect'),
   dryMassKgInput: document.querySelector('#dryMassKgInput'),
@@ -62,6 +68,37 @@ function fmt(value, digits = 1) {
     maximumFractionDigits: digits,
     minimumFractionDigits: digits
   });
+}
+
+function isFiniteNumber(value) {
+  return Number.isFinite(Number(value));
+}
+
+function validSensorPosition(sensorState = state.sensorState) {
+  const position = sensorState?.position;
+  return Boolean(position?.valid && isFiniteNumber(position.lat) && isFiniteNumber(position.lon));
+}
+
+function sensorHeading(sensorState = state.sensorState) {
+  const motion = sensorState?.motion || {};
+  if (isFiniteNumber(motion.heading_deg)) return Number(motion.heading_deg);
+  if (isFiniteNumber(motion.cog_deg)) return Number(motion.cog_deg);
+  return null;
+}
+
+function destinationPoint(point, bearingDegValue, distanceM) {
+  const bearing = toRad(bearingDegValue);
+  const latRad = toRad(point.lat);
+  const dLat = Math.cos(bearing) * distanceM / 111320;
+  const dLon = Math.sin(bearing) * distanceM / (111320 * Math.max(0.1, Math.cos(latRad)));
+  return {
+    lat: point.lat + dLat,
+    lon: point.lon + dLon
+  };
+}
+
+function toRad(value) {
+  return (value * Math.PI) / 180;
 }
 
 function listItems(items = []) {
@@ -439,6 +476,103 @@ async function applyMapPick(latlng) {
   await calculate();
 }
 
+async function applySensorStart() {
+  if (!validSensorPosition()) {
+    els.snapStatus.textContent = 'Нет актуальной позиции судна.';
+    return;
+  }
+  const position = state.sensorState.position;
+  const latlng = { lat: Number(position.lat), lng: Number(position.lon) };
+  const nearest = nearestNode(latlng);
+  if (!nearest) {
+    els.snapStatus.textContent = 'Не нашёл водный граф рядом с текущей позицией судна.';
+    return;
+  }
+
+  state.customPoints.start = {
+    lat: latlng.lat,
+    lon: latlng.lng,
+    label: `GPS ${latlng.lat.toFixed(6)}, ${latlng.lng.toFixed(6)}`,
+    source: 'sensor',
+    snappedNode: nearest.node,
+    snappedDistanceKm: nearest.distanceKm
+  };
+  option(els.startSelect, nearest.node, `GPS: ближайшая вода ${nearest.node}`);
+  els.startSelect.value = nearest.node;
+  if (els.startQueryInput) els.startQueryInput.value = `${latlng.lat.toFixed(6)}, ${latlng.lng.toFixed(6)}`;
+  setPickMode(null);
+  els.snapStatus.innerHTML = `
+    <span class="snap-line">Старт взят из GPS: ${fmt(latlng.lat, 5)}, ${fmt(latlng.lng, 5)}<br>
+    Привязка к графу: ${nearest.node}, расстояние ${fmt(nearest.distanceKm, 2)} км.</span>
+  `;
+  drawMap();
+  await calculate();
+}
+
+function renderSensorState() {
+  const sensor = state.sensorState;
+  const online = Boolean(sensor?.nmea?.online);
+  const hasPosition = validSensorPosition(sensor);
+  const source = sensor?.nmea?.source || 'нет источника';
+  const speed = sensor?.motion?.valid && isFiniteNumber(sensor.motion.sog_kmh)
+    ? `${fmt(sensor.motion.sog_kmh, 1)} км/ч`
+    : 'нет скорости';
+
+  if (els.sensorStatus) {
+    els.sensorStatus.textContent = online
+      ? `NMEA: ${source}${hasPosition ? ` · ${speed}` : ''}`
+      : 'NMEA: нет данных';
+    els.sensorStatus.classList.toggle('sensor-online', online && hasPosition);
+    els.sensorStatus.classList.toggle('sensor-offline', !online || !hasPosition);
+  }
+
+  if (els.useGpsStartBtn) {
+    els.useGpsStartBtn.disabled = !hasPosition;
+  }
+
+  if (!els.sensorDetails) return;
+  if (!hasPosition) {
+    els.sensorDetails.textContent = 'Нет актуальной позиции судна.';
+    return;
+  }
+
+  const heading = sensorHeading(sensor);
+  const depth = sensor.depth?.valid && isFiniteNumber(sensor.depth.depth_m)
+    ? ` · глубина ${fmt(sensor.depth.depth_m, 1)} м`
+    : '';
+  const rpm = sensor.engine?.rpm_valid && isFiniteNumber(sensor.engine.rpm)
+    ? ` · ${fmt(sensor.engine.rpm, 0)} об/мин`
+    : '';
+  els.sensorDetails.textContent = [
+    `Позиция: ${fmt(sensor.position.lat, 5)}, ${fmt(sensor.position.lon, 5)}`,
+    heading === null ? null : `курс ${fmt(heading, 0)}°`,
+    speed
+  ].filter(Boolean).join(' · ') + depth + rpm;
+}
+
+async function updateSensorState() {
+  try {
+    state.sensorState = await fetchJson('/api/v1/sensor-state');
+  } catch (error) {
+    const updatedAt = new Date().toISOString();
+    state.sensorState = {
+      nmea: { online: false, source: 'web_error', last_frame_age_ms: 0, updated_at: updatedAt, error: error.message },
+      position: { valid: false, lat: null, lon: null, age_ms: 0, updated_at: updatedAt },
+      motion: { valid: false, sog_mps: null, sog_kmh: null, cog_deg: null, heading_deg: null, updated_at: updatedAt },
+      depth: { valid: false, depth_m: null, updated_at: updatedAt },
+      engine: { rpm_valid: false, rpm: null, fuel_rate_valid: false, fuel_rate_lph: null, updated_at: updatedAt }
+    };
+  }
+  renderSensorState();
+  drawVessel();
+}
+
+function startSensorPolling() {
+  if (state.sensorPollTimer) return;
+  updateSensorState();
+  state.sensorPollTimer = window.setInterval(updateSensorState, 750);
+}
+
 function surfaceColor(surface, active = false) {
   const palette = {
     water: '#168aad',
@@ -528,6 +662,7 @@ function initMap() {
   state.layers.route = L.layerGroup().addTo(state.map);
   state.layers.nodes = L.layerGroup().addTo(state.map);
   state.layers.picks = L.layerGroup().addTo(state.map);
+  state.layers.vessel = L.layerGroup().addTo(state.map);
   state.map.on('click', (event) => {
     applyMapPick(event.latlng).catch((error) => {
       state.result = { ok: false, error: error.message };
@@ -619,6 +754,7 @@ function drawMap() {
   drawPickMarkers();
   drawAccessLegs();
   drawBlockedLegs();
+  drawVessel();
 
   if (state.result?.ok) {
     const bounds = state.result.route.nodes
@@ -660,6 +796,46 @@ function drawBlockedLegs() {
     })
       .bindTooltip(`${leg.label}<br>${fmt(leg.distance_km, 2)} км: водный проезд не найден`)
       .addTo(state.layers.picks);
+  }
+}
+
+function drawVessel() {
+  if (!state.map || !state.layers.vessel) return;
+  state.layers.vessel.clearLayers();
+  if (!validSensorPosition()) return;
+
+  const sensor = state.sensorState;
+  const point = {
+    lat: Number(sensor.position.lat),
+    lon: Number(sensor.position.lon)
+  };
+  const heading = sensorHeading(sensor);
+  const rotation = heading === null ? 0 : heading;
+  const marker = L.marker([point.lat, point.lon], {
+    icon: L.divIcon({
+      className: 'vessel-marker',
+      html: `<div class="vessel-icon" style="transform: rotate(${rotation}deg)"></div>`,
+      iconSize: [30, 30],
+      iconAnchor: [15, 15]
+    }),
+    zIndexOffset: 1000
+  });
+
+  const speed = sensor.motion?.valid && isFiniteNumber(sensor.motion.sog_kmh)
+    ? `${fmt(sensor.motion.sog_kmh, 1)} км/ч`
+    : 'скорость неизвестна';
+  marker.bindTooltip(`Текущее положение судна<br>${fmt(point.lat, 5)}, ${fmt(point.lon, 5)}<br>${speed}`, {
+    sticky: true
+  });
+  marker.addTo(state.layers.vessel);
+
+  if (heading !== null) {
+    const ahead = destinationPoint(point, heading, 220);
+    L.polyline([[point.lat, point.lon], [ahead.lat, ahead.lon]], {
+      color: '#0d7772',
+      weight: 3,
+      opacity: 0.86
+    }).addTo(state.layers.vessel);
   }
 }
 
@@ -873,6 +1049,7 @@ async function init() {
   renderSurfaceTable();
   initMap();
   drawMap();
+  startSensorPolling();
   await calculate();
 }
 
@@ -882,6 +1059,12 @@ els.calculateBtn.addEventListener('click', () => {
 
 els.pickStartBtn.addEventListener('click', () => setPickMode('start'));
 els.pickFinishBtn.addEventListener('click', () => setPickMode('finish'));
+els.useGpsStartBtn.addEventListener('click', () => {
+  applySensorStart().catch((error) => {
+    state.result = { ok: false, error: error.message };
+    renderSummary();
+  });
+});
 
 for (const control of [
   els.configSelect,
