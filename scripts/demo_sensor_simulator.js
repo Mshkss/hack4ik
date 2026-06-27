@@ -191,6 +191,11 @@ const server = http.createServer((req, res) => {
 tick();
 setInterval(tick, Math.max(100, tickMs));
 
+server.on('error', (error) => {
+  console.error(`Demo sensor simulator failed to listen on 127.0.0.1:${port}: ${error.message}`);
+  process.exit(1);
+});
+
 server.listen(port, '127.0.0.1', () => {
   console.log(`Demo sensor simulator: http://127.0.0.1:${port}/api/v1/sensor-state`);
   console.log(`tickMs=${tickMs}, speedMps=${speedMps}, routeLengthM=${Math.round(routeLengthM)}`);
