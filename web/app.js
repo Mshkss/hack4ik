@@ -1337,7 +1337,7 @@ async function compareAll() {
     }
     const pathLabel = result.multi_route && result.route_stops?.length
       ? result.route_stops.map((stop) => stop.label || stop.node).join(' → ')
-      : result.route.nodes.join(' → ');
+      : `${result.requested_start || result.request?.start || result.route.nodes[0]} → ${result.requested_finish || result.request?.finish || result.route.nodes[result.route.nodes.length - 1]}`;
     return `
       <article class="compare-card">
         <div>
