@@ -748,6 +748,27 @@ function surfaceColor(surface, active = false) {
   return active ? '#d6653b' : palette[surface] || '#66736f';
 }
 
+function routeSurfaceColor(surface) {
+  const palette = {
+    water: '#0b84a5',
+    ice: '#4da6c8',
+    shallow: '#d98622',
+    grass: '#6f9e3f',
+    slush: '#667f9c',
+    rocks: '#a6423a',
+    marsh: '#7a6a29'
+  };
+  return palette[surface] || '#0d7772';
+}
+
+function segmentWidthLabel(segment = {}) {
+  return segment.narrow_waterway ? 'узкий участок' : 'широкий участок';
+}
+
+function segmentWidthShort(segment = {}) {
+  return segment.narrow_waterway ? 'узко' : 'широко';
+}
+
 function renderSurfaceLegend() {
   const { raw, meta } = state.scenario;
   const stats = meta.surfaceStats || {};
@@ -870,7 +891,7 @@ function drawMap() {
   state.layers.nodes.clearLayers();
   state.layers.picks.clearLayers();
 
-  const activeEdges = new Set((state.result?.route?.segments || []).map((segment) => edgeId(segment.from, segment.to)));
+  const activeSegments = routeSegmentByEdge();
   const activeNodes = new Set(state.result?.route?.nodes || []);
 
   for (const edge of meta.edges) {
@@ -878,14 +899,28 @@ function drawMap() {
     const to = meta.nodeCoordinates[edge.to];
     const surface = raw.surfaces[edge.surface];
     if (!from || !to || !surface) continue;
-    const isActive = activeEdges.has(edgeId(edge.from, edge.to));
+    const activeSegment = activeSegments.get(edgeId(edge.from, edge.to));
+    const isActive = Boolean(activeSegment);
+    if (isActive) {
+      L.polyline([[from.lat, from.lon], [to.lat, to.lon]], {
+        color: '#ffffff',
+        weight: activeSegment.narrow_waterway ? 7 : 8.5,
+        opacity: 0.74,
+        dashArray: activeSegment.narrow_waterway ? '6 8' : null
+      }).addTo(state.layers.route);
+    }
     const layer = L.polyline([[from.lat, from.lon], [to.lat, to.lon]], {
-      color: surfaceColor(edge.surface, isActive),
-      weight: isActive ? 4.5 : 0.8,
-      opacity: isActive ? 0.92 : 0.22,
-      dashArray: surface.hard ? '10 8' : null
+      color: isActive ? routeSurfaceColor(edge.surface) : surfaceColor(edge.surface),
+      weight: isActive ? (activeSegment.narrow_waterway ? 4.6 : 5.8) : 0.8,
+      opacity: isActive ? 0.96 : 0.18,
+      dashArray: isActive
+        ? (activeSegment.narrow_waterway ? '6 8' : null)
+        : (surface.hard ? '10 8' : null)
     });
-    layer.bindTooltip(`${edge.from} → ${edge.to}<br>${edge.km} км · ${surface.label}<br>risk=${surface.risk}, k_surf=${surface.k_surf}`, {
+    const tooltip = isActive
+      ? `${activeSegment.from} → ${activeSegment.to}<br>${fmt(activeSegment.km, 2)} км · ${surface.label}<br>${segmentWidthLabel(activeSegment)} · ${activeSegment.pace_label || 'умеренно'} · ${fmt(activeSegment.recommended_speed_kmh || activeSegment.speed_kmh, 0)} км/ч`
+      : `${edge.from} → ${edge.to}<br>${edge.km} км · ${surface.label}<br>risk=${surface.risk}, k_surf=${surface.k_surf}`;
+    layer.bindTooltip(tooltip, {
       sticky: true
     });
     layer.addTo(isActive ? state.layers.route : state.layers.graph);
@@ -1049,13 +1084,130 @@ function drawRouteStopMarkers() {
   }
 }
 
+function routeLegLabel(result, legIndex) {
+  const leg = (result.route_legs || []).find((item) => item.index === legIndex);
+  if (!leg) return legIndex ? `Участок ${legIndex}` : 'Маршрут';
+  return `${leg.from_label} -> ${leg.to_label}`;
+}
+
+function groupRouteSegments(result) {
+  const groups = [];
+  for (const segment of result.route?.segments || []) {
+    const key = [
+      segment.leg_index || 1,
+      segment.surface,
+      segment.surface_label,
+      segment.narrow_waterway ? 'narrow' : 'wide',
+      segment.motion_state || '',
+      segment.pace || ''
+    ].join('|');
+    let group = groups[groups.length - 1];
+    if (!group || group.key !== key) {
+      group = {
+        key,
+        legIndex: segment.leg_index || 1,
+        surface: segment.surface,
+        surfaceLabel: segment.surface_label,
+        narrow: Boolean(segment.narrow_waterway),
+        motionLabel: segment.motion_label || (segment.planing ? 'глиссирование' : 'водоизмещающий режим'),
+        paceLabel: segment.pace_label || 'умеренно',
+        from: segment.from,
+        to: segment.to,
+        km: 0,
+        timeMin: 0,
+        fuelL: 0,
+        risk: 0,
+        speedWeighted: 0,
+        notes: new Set()
+      };
+      groups.push(group);
+    }
+    group.to = segment.to;
+    group.km += Number(segment.km || 0);
+    group.timeMin += Number(segment.time_h || 0) * 60;
+    group.fuelL += Number(segment.fuel_l || 0);
+    group.risk += Number(segment.risk_points || 0);
+    group.speedWeighted += Number(segment.recommended_speed_kmh || segment.speed_kmh || 0) * Number(segment.km || 0);
+    for (const note of (segment.speed_notes || []).slice(0, 2)) group.notes.add(note);
+  }
+  return groups;
+}
+
+function renderHumanRouteSegments(result) {
+  const groups = groupRouteSegments(result);
+  if (!groups.length) {
+    return '<p class="subtle">Участки появятся после расчёта маршрута.</p>';
+  }
+  const cards = groups.map((group, index) => {
+    const avgSpeed = group.km > 0 ? group.speedWeighted / group.km : 0;
+    const notes = [...group.notes].slice(0, 2);
+    return `
+      <article class="route-segment-card">
+        <div class="route-segment-head">
+          <span class="segment-number">${index + 1}</span>
+          <span class="legend-dot" style="background:${routeSurfaceColor(group.surface)}"></span>
+          <div>
+            <b>${escapeHtml(group.surfaceLabel || 'Участок')}</b>
+            <small>${escapeHtml(routeLegLabel(result, group.legIndex))}</small>
+          </div>
+        </div>
+        <div class="segment-tags">
+          <span class="tag ${group.narrow ? 'slow' : ''}">${segmentWidthShort({ narrow_waterway: group.narrow })}</span>
+          <span class="tag">${escapeHtml(group.motionLabel)}</span>
+          <span class="tag">${escapeHtml(group.paceLabel)}</span>
+        </div>
+        <div class="segment-metrics">
+          <span><b>${fmt(group.km, 1)}</b> км</span>
+          <span><b>${fmt(group.timeMin, 0)}</b> мин</span>
+          <span><b>${fmt(avgSpeed, 0)}</b> км/ч</span>
+          <span><b>${fmt(group.fuelL, 1)}</b> л</span>
+          <span><b>${fmt(group.risk, 1)}</b> риск</span>
+        </div>
+        ${notes.length ? `<p>${escapeHtml(notes.join('; '))}</p>` : ''}
+      </article>
+    `;
+  }).join('');
+
+  const blocked = (result.blocked_legs || []).map((leg) => `
+    <article class="route-segment-card blocked-card">
+      <div class="route-segment-head">
+        <span class="segment-number">!</span>
+        <span class="legend-dot" style="background:#bd4d35"></span>
+        <div>
+          <b>${escapeHtml(leg.label || 'Водный проезд не найден')}</b>
+          <small>${fmt(leg.distance_km, 2)} км</small>
+        </div>
+      </div>
+      <p>Этот участок показан красным пунктиром: по текущему графу аэролодка туда не проходит.</p>
+    </article>
+  `).join('');
+
+  const access = (result.access_legs || []).map((leg) => `
+    <article class="route-segment-card walk-card">
+      <div class="route-segment-head">
+        <span class="segment-number">P</span>
+        <span class="legend-dot" style="background:#d6653b"></span>
+        <div>
+          <b>${escapeHtml(leg.label || 'Пеший добор')}</b>
+          <small>${escapeHtml(leg.from_label || 'точка')} -> ${escapeHtml(leg.to_label || 'точка')}</small>
+        </div>
+      </div>
+      <div class="segment-metrics">
+        <span><b>${fmt(leg.distance_km, 1)}</b> км</span>
+        <span><b>${fmt(leg.time_min, 0)}</b> мин</span>
+      </div>
+    </article>
+  `).join('');
+
+  return cards + blocked + access;
+}
+
 function renderSummary() {
   const result = state.result;
   if (!result?.ok) {
     const message = humanError(result?.error);
     els.routeBadge.textContent = message;
     els.summaryCards.innerHTML = '';
-    els.calcInputs.innerHTML = '';
     els.segmentsBody.innerHTML = '';
     els.warningsList.innerHTML = `<li>${message}</li>`;
     return;
@@ -1088,51 +1240,7 @@ function renderSummary() {
   const accessAdvice = (result.access_legs || []).map((leg) => `${leg.label}: ${fmt(leg.distance_km, 2)} км пешком.`);
   const blockedAdvice = (result.blocked_legs || []).map((leg) => `${leg.label}: ${fmt(leg.distance_km, 2)} км по воде не строится.`);
   els.warningsList.innerHTML = listItems([...result.warnings, ...blockedAdvice, ...accessAdvice, ...routeAdvice.slice(0, 5)]);
-  renderCalculationInputs(result);
-  els.segmentsBody.innerHTML = result.route.segments.map((segment) => `
-    <tr>
-      <td>${segment.from}</td>
-      <td>${segment.to}</td>
-      <td>${segment.surface_label}</td>
-      <td>${fmt(segment.km)}</td>
-      <td>${fmt(segment.time_h * 60, 0)}</td>
-      <td>${fmt(segment.fuel_l)}</td>
-      <td>${fmt(segment.risk_points)}</td>
-      <td class="used-values">
-        расчёт ${fmt(segment.speed_kmh, 0)} → рек. ${fmt(segment.recommended_speed_kmh || segment.speed_kmh, 0)} км/ч<br>
-        темп: <b>${segment.pace_label || 'умеренно'}</b> · ${segment.motion_label || (segment.planing ? 'глиссирование' : 'водоизмещающий режим')}<br>
-        Fn=${fmt(segment.froude, 2)} · P=${fmt(segment.power_kw, 0)} кВт · ${fmt(segment.fuel_l_h, 1)} л/ч<br>
-        R=${fmt(segment.resistance_n, 0)} Н · ${fmt(segment.fuel_l_per_km, 2)} л/км<br>
-        k_surf=${fmt(segment.k_surf, 2)} · risk=${fmt(segment.surface_risk, 0)}<br>
-        ${segment.narrow_waterway ? '<span class="tag slow">узкая река</span>' : ''}
-        ${segment.cavitation_risk && segment.cavitation_risk !== 'low' ? `<span class="tag warn">кавитация/срыв: ${segment.cavitation_label}</span>` : ''}
-        ${segment.hard ? '<span class="tag warn">сложно</span>' : ''}
-        <small>${(segment.speed_notes || []).slice(0, 2).join('; ')}</small>
-      </td>
-    </tr>
-  `).join('') + (result.blocked_legs || []).map((leg) => `
-    <tr class="blocked-row">
-      <td>${escapeHtml(leg.from_node || 'доступная вода')}</td>
-      <td>${escapeHtml(leg.to_node || 'выбранная точка')}</td>
-      <td>водный проезд не найден</td>
-      <td>${fmt(leg.distance_km)}</td>
-      <td>-</td>
-      <td>-</td>
-      <td>-</td>
-      <td class="used-values">Этот участок показан красным пунктиром: по текущему графу аэролодка туда не проходит.</td>
-    </tr>
-  `).join('') + (result.access_legs || []).map((leg) => `
-    <tr class="walk-row">
-      <td>${escapeHtml(leg.from_label || leg.from_node || 'точка')}</td>
-      <td>${escapeHtml(leg.to_label || leg.to_node || 'точка')}</td>
-      <td>пеший добор</td>
-      <td>${fmt(leg.distance_km)}</td>
-      <td>${fmt(leg.time_min, 0)}</td>
-      <td>0,0</td>
-      <td>0,0</td>
-      <td class="used-values">Аэролодка идёт до ближайшей достижимой воды, дальше участок показан пунктиром.</td>
-    </tr>
-  `).join('');
+  els.segmentsBody.innerHTML = renderHumanRouteSegments(result);
 }
 
 function renderCalculationInputs(result) {
@@ -1194,7 +1302,7 @@ async function calculate() {
     renderSummary();
     drawMap();
     compareAll().catch((error) => {
-      els.compareBody.innerHTML = `<tr><td colspan="7">${error.message}</td></tr>`;
+      els.compareBody.innerHTML = `<article class="compare-card compare-card-error"><p>${escapeHtml(error.message)}</p></article>`;
     });
   } finally {
     els.calculateBtn.disabled = false;
@@ -1206,7 +1314,7 @@ async function compareAll() {
   const runId = ++state.compareRunId;
   const { raw } = state.scenario;
   const rows = [];
-  els.compareBody.innerHTML = '<tr><td colspan="7">Сравниваю режимы...</td></tr>';
+  els.compareBody.innerHTML = '<p class="subtle">Сравниваю режимы...</p>';
   for (const config of Object.keys(raw.configs)) {
     for (const mode of Object.keys(raw.modes)) {
       if (runId !== state.compareRunId) return;
@@ -1219,21 +1327,31 @@ async function compareAll() {
   state.compare = rows;
   els.compareBody.innerHTML = rows.map(({ config, mode, result }) => {
     if (!result.ok) {
-      return `<tr><td>${config}</td><td>${mode}</td><td colspan="5">${humanError(result.error)}</td></tr>`;
+      return `
+        <article class="compare-card compare-card-error">
+          <b>${escapeHtml(mode)}</b>
+          <span>${escapeHtml(config)}</span>
+          <p>${escapeHtml(humanError(result.error))}</p>
+        </article>
+      `;
     }
     const pathLabel = result.multi_route && result.route_stops?.length
       ? result.route_stops.map((stop) => stop.label || stop.node).join(' → ')
       : result.route.nodes.join(' → ');
     return `
-      <tr>
-        <td>${config}</td>
-        <td>${mode}</td>
-        <td class="route-path">${escapeHtml(pathLabel)}</td>
-        <td>${fmt(result.totals.distance_km)}</td>
-        <td>${fmt(result.totals.time_min, 0)}</td>
-        <td>${fmt(result.totals.fuel_l)}</td>
-        <td>${fmt(result.totals.risk_points)}</td>
-      </tr>
+      <article class="compare-card">
+        <div>
+          <b>${escapeHtml(mode)}</b>
+          <span>${escapeHtml(config)}</span>
+        </div>
+        <p>${escapeHtml(pathLabel.length > 72 ? `${pathLabel.slice(0, 72)}...` : pathLabel)}</p>
+        <div class="compare-metrics">
+          <span>${fmt(result.totals.distance_km)} км</span>
+          <span>${fmt(result.totals.time_min, 0)} мин</span>
+          <span>${fmt(result.totals.fuel_l)} л</span>
+          <span>риск ${fmt(result.totals.risk_points)}</span>
+        </div>
+      </article>
     `;
   }).join('');
 }
@@ -1243,7 +1361,6 @@ async function init() {
   state.scenario = await fetchJson('/api/scenario');
   fillControls();
   renderSurfaceLegend();
-  renderSurfaceTable();
   initMap();
   drawMap();
   startSensorPolling();

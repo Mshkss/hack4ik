@@ -566,17 +566,12 @@ button:disabled {
 }
 
 .details-grid {
-  grid-template-columns: minmax(320px, 0.9fr) minmax(420px, 1.1fr);
+  grid-template-columns: minmax(360px, 1.1fr) minmax(320px, 0.9fr);
   margin-top: 16px;
 }
 
 .details-grid > section {
   min-width: 0;
-}
-
-.details-grid > section:nth-child(3),
-.details-grid > section:nth-child(4) {
-  grid-column: 1 / -1;
 }
 
 .calc-inputs {
@@ -706,6 +701,95 @@ tr:last-child td {
 .route-path {
   max-width: 240px;
   color: var(--muted);
+}
+
+.route-segment-list,
+.compare-list {
+  display: grid;
+  gap: 10px;
+}
+
+.route-segment-card,
+.compare-card {
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 12px;
+  background: #fbfcfc;
+}
+
+.route-segment-head {
+  display: grid;
+  grid-template-columns: 26px 12px 1fr;
+  gap: 8px;
+  align-items: center;
+}
+
+.route-segment-head b,
+.compare-card b {
+  display: block;
+}
+
+.route-segment-head small,
+.compare-card span,
+.route-segment-card p,
+.compare-card p {
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.4;
+}
+
+.segment-number {
+  display: grid;
+  place-items: center;
+  width: 24px;
+  height: 24px;
+  border-radius: 999px;
+  background: var(--ink);
+  color: #fff;
+  font-size: 12px;
+  font-weight: 900;
+}
+
+.segment-tags,
+.segment-metrics,
+.compare-metrics {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 7px;
+  margin-top: 10px;
+}
+
+.segment-metrics span,
+.compare-metrics span {
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  padding: 5px 8px;
+  background: #ffffff;
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.route-segment-card p,
+.compare-card p {
+  margin: 10px 0 0;
+}
+
+.blocked-card {
+  background: #fff3ef;
+}
+
+.walk-card {
+  background: #fff8ef;
+}
+
+.compare-card {
+  display: grid;
+  gap: 8px;
+}
+
+.compare-card-error {
+  background: #fff3ef;
 }
 
 @media (max-width: 1180px) {
