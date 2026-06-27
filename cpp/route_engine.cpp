@@ -76,11 +76,6 @@ struct Edge {
     string source = "unknown";
 };
 
-struct GraphArc {
-    Edge edge;
-    const Surface* surface = nullptr;
-};
-
 struct NodeCoord {
     double lat = 0.0;
     double lon = 0.0;
@@ -131,6 +126,12 @@ struct Segment {
     double risk_component = 0.0;
     double planing_penalty = 0.0;
     double hard_penalty = 0.0;
+    double cost = 0.0;
+};
+
+struct GraphArc {
+    Edge edge;
+    const Surface* surface = nullptr;
     double cost = 0.0;
 };
 
@@ -501,6 +502,23 @@ static Segment score_edge(const Edge& edge, const Surface& surface, const Config
     return segment;
 }
 
+static double search_cost_for_edge(const Edge& edge, const Surface& surface, const Config& config, const Mode& mode) {
+    const ModeWeights weights = weights_for_mode(mode);
+    const double speed_kmh = std::max(1.0, surface.speed_kmh * speed_factor_for_mode(mode));
+    const double time_component = ((edge.km / speed_kmh) * 60.0) / 10.0;
+    const double fuel_component = edge.km * surface.k_surf * config.k_load * mode.k_mode / 10.0;
+    const double risk_component = edge.km * surface.risk / 5.0;
+    const double planing_penalty = surface.planing ? 0.0 : edge.km;
+    const double hard_penalty = surface.hard ? edge.km : 0.0;
+    return
+        weights.distance * edge.km +
+        weights.time * time_component +
+        weights.fuel * fuel_component +
+        weights.risk * risk_component +
+        weights.planing_penalty * planing_penalty +
+        weights.hard_penalty * hard_penalty;
+}
+
 static RouteResult calculate_route(const Scenario& scenario, const string& start, const string& finish, const string& config_name, const string& mode_name) {
     RouteResult result;
     result.start = start;
@@ -542,17 +560,17 @@ static RouteResult calculate_route(const Scenario& scenario, const string& start
         if (surface_it == scenario.surfaces.end()) continue;
         const Surface& surface = surface_it->second;
         if (surface.hard && !config.allow_hard) continue;
-        graph[edge.from].push_back({edge, &surface});
+        graph[edge.from].push_back({edge, &surface, search_cost_for_edge(edge, surface, config, mode)});
 
         Edge reverse = edge;
         std::swap(reverse.from, reverse.to);
-        graph[reverse.from].push_back({reverse, &surface});
+        graph[reverse.from].push_back({reverse, &surface, search_cost_for_edge(reverse, surface, config, mode)});
     }
 
     const double INF = std::numeric_limits<double>::infinity();
     std::unordered_map<string, double> dist;
     std::unordered_map<string, string> prev_node;
-    std::unordered_map<string, Segment> prev_segment;
+    std::unordered_map<string, Edge> prev_edge;
     for (const auto& node : node_set) dist[node] = INF;
     dist[start] = 0.0;
     const ModeWeights active_weights = weights_for_mode(mode);
@@ -570,14 +588,13 @@ static RouteResult calculate_route(const Scenario& scenario, const string& start
         closed.insert(node);
         if (node == finish) break;
         for (const auto& arc : graph[node]) {
-            Segment segment = score_edge(arc.edge, *arc.surface, config, mode, scenario.boat);
-            const string& next = segment.edge.to;
+            const string& next = arc.edge.to;
             if (closed.count(next)) continue;
-            double candidate = dist[node] + segment.cost;
+            double candidate = dist[node] + arc.cost;
             if (candidate < dist[next]) {
                 dist[next] = candidate;
                 prev_node[next] = node;
-                prev_segment[next] = segment;
+                prev_edge[next] = arc.edge;
                 queue.push({candidate + heuristic_cost(scenario, next, finish, active_weights), next});
             }
         }
@@ -591,7 +608,7 @@ static RouteResult calculate_route(const Scenario& scenario, const string& start
         return result;
     }
 
-    std::vector<Segment> reversed_segments;
+    std::vector<Edge> reversed_edges;
     string cursor = finish;
     std::unordered_set<string> reconstruction_seen;
     result.nodes.push_back(cursor);
@@ -606,13 +623,26 @@ static RouteResult calculate_route(const Scenario& scenario, const string& start
             result.error = "Internal route reconstruction error.";
             return result;
         }
-        reversed_segments.push_back(prev_segment[cursor]);
+        auto edge_it = prev_edge.find(cursor);
+        if (edge_it == prev_edge.end()) {
+            result.error = "Internal route reconstruction error.";
+            return result;
+        }
+        reversed_edges.push_back(edge_it->second);
         cursor = prev_it->second;
         result.nodes.push_back(cursor);
     }
     std::reverse(result.nodes.begin(), result.nodes.end());
-    std::reverse(reversed_segments.begin(), reversed_segments.end());
-    result.segments = reversed_segments;
+    std::reverse(reversed_edges.begin(), reversed_edges.end());
+    result.segments.reserve(reversed_edges.size());
+    for (const auto& edge : reversed_edges) {
+        auto surface_it = scenario.surfaces.find(edge.surface);
+        if (surface_it == scenario.surfaces.end()) {
+            result.error = "Internal route surface error: " + edge.surface;
+            return result;
+        }
+        result.segments.push_back(score_edge(edge, surface_it->second, config, mode, scenario.boat));
+    }
 
     std::set<string> unique_warnings;
     std::set<string> unique_advice;
