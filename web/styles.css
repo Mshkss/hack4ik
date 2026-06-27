@@ -110,6 +110,10 @@ h3 {
   background: #fff8ef;
 }
 
+.blocked-row {
+  background: #fde8e3;
+}
+
 .status-pill,
 .route-badge {
   border: 1px solid var(--line);

@@ -602,6 +602,7 @@ function drawMap() {
 
   drawPickMarkers();
   drawAccessLegs();
+  drawBlockedLegs();
 
   if (state.result?.ok) {
     const bounds = state.result.route.nodes
@@ -627,6 +628,21 @@ function drawAccessLegs() {
       dashArray: '2 8'
     })
       .bindTooltip(`${leg.label}<br>${fmt(leg.distance_km, 2)} км пешком`)
+      .addTo(state.layers.picks);
+  }
+}
+
+function drawBlockedLegs() {
+  const legs = state.result?.blocked_legs || [];
+  for (const leg of legs) {
+    if (!leg.from || !leg.to || leg.distance_km < 0.01) continue;
+    L.polyline([[leg.from.lat, leg.from.lon], [leg.to.lat, leg.to.lon]], {
+      color: '#bd4d35',
+      weight: 3,
+      opacity: 0.85,
+      dashArray: '10 8'
+    })
+      .bindTooltip(`${leg.label}<br>${fmt(leg.distance_km, 2)} км: водный проезд не найден`)
       .addTo(state.layers.picks);
   }
 }
@@ -691,7 +707,8 @@ function renderSummary() {
 
   const routeAdvice = result.route_advice || [];
   const accessAdvice = (result.access_legs || []).map((leg) => `${leg.label}: ${fmt(leg.distance_km, 2)} км пешком.`);
-  els.warningsList.innerHTML = listItems([...result.warnings, ...accessAdvice, ...routeAdvice.slice(0, 5)]);
+  const blockedAdvice = (result.blocked_legs || []).map((leg) => `${leg.label}: ${fmt(leg.distance_km, 2)} км по воде не строится.`);
+  els.warningsList.innerHTML = listItems([...result.warnings, ...blockedAdvice, ...accessAdvice, ...routeAdvice.slice(0, 5)]);
   renderCalculationInputs(result);
   els.segmentsBody.innerHTML = result.route.segments.map((segment) => `
     <tr>
@@ -713,6 +730,17 @@ function renderSummary() {
         ${segment.hard ? '<span class="tag warn">сложно</span>' : ''}
         <small>${(segment.speed_notes || []).slice(0, 2).join('; ')}</small>
       </td>
+    </tr>
+  `).join('') + (result.blocked_legs || []).map((leg) => `
+    <tr class="blocked-row">
+      <td>${escapeHtml(leg.from_node || 'доступная вода')}</td>
+      <td>${escapeHtml(leg.to_node || 'выбранная точка')}</td>
+      <td>водный проезд не найден</td>
+      <td>${fmt(leg.distance_km)}</td>
+      <td>-</td>
+      <td>-</td>
+      <td>-</td>
+      <td class="used-values">Этот участок показан красным пунктиром: по текущему графу аэролодка туда не проходит.</td>
     </tr>
   `).join('') + (result.access_legs || []).map((leg) => `
     <tr class="walk-row">

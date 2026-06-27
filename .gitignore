@@ -5,4 +5,4 @@ build/
 .env
 .env.*
 /tmp/
-
+github_key.pub

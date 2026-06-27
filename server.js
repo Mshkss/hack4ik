@@ -113,6 +113,44 @@ function nearestReachableNode(meta, nodes, point) {
   return best;
 }
 
+function nearestGraphNode(meta, point) {
+  let best = null;
+  for (const [node, coord] of Object.entries(meta.nodeCoordinates || {})) {
+    if (!coord) continue;
+    const distanceKm = haversineKm(point, coord);
+    if (!best || distanceKm < best.distanceKm) best = { node, coord, distanceKm };
+  }
+  return best;
+}
+
+function resolveRouteNode(meta, requestedNode, point) {
+  if (point) {
+    const nearest = nearestGraphNode(meta, point);
+    if (nearest) {
+      return {
+        node: nearest.node,
+        snapped: nearest.node !== requestedNode,
+        distanceKm: nearest.distanceKm,
+        coord: nearest.coord
+      };
+    }
+  }
+  if (meta.nodeCoordinates?.[requestedNode]) {
+    return {
+      node: requestedNode,
+      snapped: false,
+      distanceKm: 0,
+      coord: meta.nodeCoordinates[requestedNode]
+    };
+  }
+  return {
+    node: requestedNode,
+    snapped: false,
+    distanceKm: 0,
+    coord: null
+  };
+}
+
 function engineArgsFrom(url, start, finish) {
   const args = [
     '--data', routeDataPath,
@@ -234,6 +272,11 @@ function decorateRoute(payload, context) {
     payload.route_advice = payload.route_advice || [];
     payload.route_advice.unshift('Часть маршрута проходит вне водного графа: она показана пешим пунктиром.');
   }
+  if (context.blockedLegs?.length) {
+    payload.blocked_legs = context.blockedLegs;
+    payload.route_advice = payload.route_advice || [];
+    payload.route_advice.unshift('Красный пунктир показывает направление, куда водный граф не дал проезд; дальше выбран ближайший доступный выход на берег.');
+  }
   return payload;
 }
 
@@ -280,29 +323,58 @@ function route(req, res) {
         const config = url.searchParams.get('config') || 'без поддува';
         const startPoint = parsePoint(url.searchParams, 'start');
         const finishPoint = parsePoint(url.searchParams, 'finish');
+        const resolvedStart = resolveRouteNode(meta, start, startPoint);
+        const resolvedFinish = resolveRouteNode(meta, finish, finishPoint);
         const context = { meta, startPoint, finishPoint };
 
-        const direct = await runEngine(url, start, finish);
+        if (!meta.nodeCoordinates?.[resolvedStart.node]) {
+          sendJson(res, 200, {
+            ok: false,
+            route_available: false,
+            error: `Unknown start node: ${start}`,
+            warnings: ['Не удалось привязать старт к текущему графу. Поставь старт на карте ближе к рабочей области.']
+          });
+          return;
+        }
+        if (!meta.nodeCoordinates?.[resolvedFinish.node]) {
+          sendJson(res, 200, {
+            ok: false,
+            route_available: false,
+            error: `Unknown finish node: ${finish}`,
+            warnings: ['Не удалось привязать финиш к текущему графу. Поставь финиш на карте ближе к рабочей области.']
+          });
+          return;
+        }
+
+        const direct = await runEngine(url, resolvedStart.node, resolvedFinish.node);
         if (direct.ok) {
+          direct.requested_start = start;
+          direct.requested_finish = finish;
+          direct.water_start = resolvedStart.node;
+          direct.water_finish = resolvedFinish.node;
+          if (resolvedStart.snapped || resolvedFinish.snapped) {
+            direct.route_advice = direct.route_advice || [];
+            direct.route_advice.unshift('Старт/финиш привязаны к ближайшим актуальным узлам водного графа.');
+          }
           sendJson(res, 200, decorateRoute(direct, context));
           return;
         }
 
-        const targetPoint = finishPoint || meta.nodeCoordinates?.[finish];
+        const targetPoint = finishPoint || meta.nodeCoordinates?.[resolvedFinish.node];
         const canFallback = targetPoint && direct.error && direct.error.startsWith('Route is not available');
         if (!canFallback) {
           sendJson(res, 200, direct);
           return;
         }
 
-        const reachable = reachableNodes(start, config);
+        const reachable = reachableNodes(resolvedStart.node, config);
         const nearest = nearestReachableNode(meta, reachable, targetPoint);
-        if (!nearest || nearest.node === finish) {
+        if (!nearest || nearest.node === resolvedFinish.node) {
           sendJson(res, 200, direct);
           return;
         }
 
-        const partial = await runEngine(url, start, nearest.node);
+        const partial = await runEngine(url, resolvedStart.node, nearest.node);
         if (!partial.ok) {
           sendJson(res, 200, direct);
           return;
@@ -310,11 +382,23 @@ function route(req, res) {
 
         partial.partial_route = true;
         partial.route_available = true;
+        partial.requested_start = start;
         partial.requested_finish = finish;
+        partial.water_start = resolvedStart.node;
         partial.water_finish = nearest.node;
         partial.warnings = partial.warnings || [];
         partial.warnings.unshift(`До выбранного финиша нет полного водного пути. Маршрут построен до ближайшей достижимой воды: ${nearest.node}.`);
-        sendJson(res, 200, decorateRoute(partial, { ...context, finishPoint: targetPoint }));
+        const requestedFinishCoord = meta.nodeCoordinates?.[resolvedFinish.node];
+        const blockedLegs = requestedFinishCoord ? [{
+          kind: 'blocked_water',
+          label: 'Водный проезд не найден',
+          from: { lat: nearest.coord.lat, lon: nearest.coord.lon },
+          to: { lat: requestedFinishCoord.lat, lon: requestedFinishCoord.lon },
+          from_node: nearest.node,
+          to_node: resolvedFinish.node,
+          distance_km: haversineKm(nearest.coord, requestedFinishCoord)
+        }] : [];
+        sendJson(res, 200, decorateRoute(partial, { ...context, finishPoint: targetPoint, blockedLegs }));
       } catch (error) {
         sendJson(res, 500, { ok: false, error: error.message });
       }
