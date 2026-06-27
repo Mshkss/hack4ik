@@ -27,7 +27,7 @@ const els = {
   finishSelect: document.querySelector('#finishSelect'),
   startQueryInput: document.querySelector('#startQueryInput'),
   finishQueryInput: document.querySelector('#finishQueryInput'),
-  locationHints: document.querySelector('#locationHints'),
+  cityHints: document.querySelector('#cityHints'),
   pickStartBtn: document.querySelector('#pickStartBtn'),
   pickFinishBtn: document.querySelector('#pickFinishBtn'),
   snapStatus: document.querySelector('#snapStatus'),
@@ -187,10 +187,13 @@ function fillControls() {
   const { raw, meta } = state.scenario;
   els.scenarioLine.textContent = `${raw.scenario.name}. ${meta.map?.area_label || raw.scenario.area}`;
 
-  for (const node of meta.pickableNodes || meta.nodes) {
+  const locations = meta.locationCatalog?.length
+    ? meta.locationCatalog.map((item) => item.name)
+    : (meta.pickableNodes || meta.nodes);
+  for (const node of locations) {
     option(els.startSelect, node);
     option(els.finishSelect, node);
-    dataOption(els.locationHints, node);
+    dataOption(els.cityHints, node);
   }
   els.startSelect.value = meta.start;
   els.finishSelect.value = meta.finish;
@@ -280,6 +283,19 @@ function resolveLocationQuery(rawValue, target) {
   }
 
   const normalized = normalizeLocation(value);
+  const catalogItem = (meta.locationCatalog || []).find((item) => normalizeLocation(item.name) === normalized);
+  if (catalogItem) {
+    const nearest = nearestNode({ lat: catalogItem.lat, lng: catalogItem.lon });
+    if (!nearest) throw new Error(`Не нашёл водный граф рядом с точкой ${catalogItem.name}`);
+    return {
+      node: nearest.node,
+      point: { lat: catalogItem.lat, lon: catalogItem.lon },
+      label: catalogItem.name,
+      source: 'catalog',
+      distanceKm: nearest.distanceKm
+    };
+  }
+
   const exactNode = meta.nodes.find((node) => normalizeLocation(node) === normalized);
   if (exactNode) {
     const coord = meta.nodeCoordinates[exactNode];

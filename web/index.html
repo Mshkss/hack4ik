@@ -27,26 +27,26 @@
         <aside class="controls">
           <h2>Параметры</h2>
           <label>
-            Старт
+            Старт из списка
             <select id="startSelect"></select>
           </label>
           <label>
             Старт вручную
-            <input id="startQueryInput" type="text" list="locationHints" placeholder="Красноярск или 55.99, 92.86">
+            <input id="startQueryInput" type="text" list="cityHints" placeholder="Красноярск или 55.99, 92.86">
           </label>
           <label>
-            Финиш
+            Финиш из списка
             <select id="finishSelect"></select>
           </label>
           <label>
             Финиш вручную
-            <input id="finishQueryInput" type="text" list="locationHints" placeholder="Дивногорск или 55.96, 92.38">
+            <input id="finishQueryInput" type="text" list="cityHints" placeholder="Дивногорск или 55.96, 92.38">
           </label>
-          <datalist id="locationHints"></datalist>
+          <datalist id="cityHints"></datalist>
           <div class="pick-controls">
             <button id="pickStartBtn" type="button" class="secondary-btn">Поставить старт на карте</button>
             <button id="pickFinishBtn" type="button" class="secondary-btn">Поставить финиш на карте</button>
-            <p id="snapStatus" class="hint">Клик или ручной ввод привязывает точку к ближайшей доступной воде. Если дальше воды нет, покажем пеший добор.</p>
+            <p id="snapStatus" class="hint">Выбирай город/точку из списка, пиши координаты или кликай по карте. Если по воде дальше нельзя, покажем ближайший выход и пеший добор.</p>
           </div>
           <label>
             Конфигурация

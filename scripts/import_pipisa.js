@@ -24,20 +24,22 @@ const anchorCoordinates = {
 };
 
 const graphBounds = {
-  south: 55.84,
-  west: 91.82,
-  north: 56.10,
-  east: 93.20
+  south: 55.80,
+  west: 91.74,
+  north: 56.16,
+  east: 93.32
 };
 
 const workingAreaLabel = 'Акватория Красноярска: Бирюса, Дивногорск, КрасГЭС, Усть-Мана и городская часть Енисея';
 
 const triangularMesh = {
-  side_km: 0.16
+  side_km: 0.12
 };
 
-const waterwayNodeSpacingKm = 0.12;
-const waterwayGridConnectorKm = 0.42;
+const waterwayNodeSpacingKm = 0.08;
+const waterwayGridConnectorKm = 0.58;
+const waterwayGridConnectorCount = 4;
+const waterwayInterconnectorKm = 0.18;
 const smallWaterBodyMaxKm = 0.45;
 const smallWaterBodyMicroTriangleKm = 0.06;
 
@@ -452,7 +454,8 @@ function buildWaterwayGraph(scenario, barriers, projection) {
     let prevId = null;
     points.forEach((point, index) => {
       const id = `w_${element.id}_${index}`;
-      nodes.push({ id, lat: point.lat, lon: point.lon, surface, source: 'osm_waterway_line' });
+      const xy = projection.toXY(point);
+      nodes.push({ id, wayId: element.id, lat: point.lat, lon: point.lon, x: xy.x, y: xy.y, surface, source: 'osm_waterway_line' });
       nodeCoordinates[id] = {
         lat: point.lat,
         lon: point.lon,
@@ -477,6 +480,51 @@ function buildWaterwayGraph(scenario, barriers, projection) {
     });
   }
 
+  let interconnectorEdges = 0;
+  const cellSizeKm = waterwayInterconnectorKm;
+  const spatialIndex = new Map();
+  const cellKey = (node) => `${Math.floor(node.x / cellSizeKm)}:${Math.floor(node.y / cellSizeKm)}`;
+  for (const node of nodes) {
+    const key = cellKey(node);
+    if (!spatialIndex.has(key)) spatialIndex.set(key, []);
+    spatialIndex.get(key).push(node);
+  }
+  for (let i = 0; i < nodes.length; i++) {
+    const fromNode = nodes[i];
+    const nearest = [];
+    const cx = Math.floor(fromNode.x / cellSizeKm);
+    const cy = Math.floor(fromNode.y / cellSizeKm);
+    for (let dx = -1; dx <= 1; dx++) {
+      for (let dy = -1; dy <= 1; dy++) {
+        const bucket = spatialIndex.get(`${cx + dx}:${cy + dy}`) || [];
+        for (const toNode of bucket) {
+          if (fromNode.id >= toNode.id) continue;
+          if (fromNode.wayId === toNode.wayId) continue;
+          if (fromNode.surface !== toNode.surface) continue;
+          const distance = Math.hypot(fromNode.x - toNode.x, fromNode.y - toNode.y);
+          if (distance <= waterwayInterconnectorKm) nearest.push({ node: toNode, distance });
+        }
+      }
+    }
+    nearest
+      .sort((a, b) => a.distance - b.distance)
+      .slice(0, 2)
+      .forEach(({ node: toNode, distance }) => {
+        const edgeKey = [fromNode.id, toNode.id].sort().join('__');
+        if (seen.has(edgeKey)) return;
+        if (segmentBlockedByBarrier(fromNode, toNode, barriers, projection)) return;
+        seen.add(edgeKey);
+        edges.push({
+          from: fromNode.id,
+          to: toNode.id,
+          km: Number(distance.toFixed(3)),
+          surface: fromNode.surface,
+          source: 'osm_waterway_interconnector'
+        });
+        interconnectorEdges += 1;
+      });
+  }
+
   return {
     nodes,
     nodeCoordinates,
@@ -488,7 +536,9 @@ function buildWaterwayGraph(scenario, barriers, projection) {
       typeCounts,
       nodes: nodes.length,
       edges: edges.length,
-      spacing_km: waterwayNodeSpacingKm
+      spacing_km: waterwayNodeSpacingKm,
+      interconnector_km: waterwayInterconnectorKm,
+      interconnector_edges: interconnectorEdges
     }
   };
 }
@@ -785,7 +835,7 @@ function buildGraphFromZones(zones, scenario) {
       .map((node) => ({ node, distance: haversineKm(waterwayNode, node) }))
       .filter((item) => item.distance <= waterwayGridConnectorKm)
       .sort((a, b) => a.distance - b.distance)
-      .slice(0, 2);
+      .slice(0, waterwayGridConnectorCount);
     for (const item of nearest) {
       const key = [waterwayNode.id, item.node.id].sort().join('__');
       if (seen.has(key)) continue;
@@ -829,6 +879,13 @@ function buildGraphFromZones(zones, scenario) {
   return {
     nodes: [...anchorNodes, ...routeNodes.map((node) => node.id)],
     pickableNodes: anchorNodes,
+    locationCatalog: anchorNodes.map((name) => ({
+      name,
+      type: 'city_or_landmark',
+      lat: anchorCoordinates[name].lat,
+      lon: anchorCoordinates[name].lon,
+      source: anchorCoordinates[name].source
+    })),
     nodeCoordinates,
     edges,
     waterwayGraphStats: waterwayGraph.stats,
@@ -1003,6 +1060,7 @@ function main() {
     requestedFinish,
     nodes: graph.nodes,
     pickableNodes: graph.pickableNodes,
+    locationCatalog: graph.locationCatalog,
     edges: graph.edges,
     ignoredSourceEdgesCount: testEdges.length,
     nodeCoordinates: graph.nodeCoordinates,
@@ -1014,6 +1072,8 @@ function main() {
       waterway_lines: graph.waterwayGraphStats,
       barriers: graph.barrierStats,
       waterway_connector_km: waterwayGridConnectorKm,
+      waterway_connector_count: waterwayGridConnectorCount,
+      waterway_interconnector_km: waterwayInterconnectorKm,
       explanation: 'Рабочий граф строится как треугольный navmesh по полигонам surface_zones.geojson с учетом inner-дыр multipolygon и линейных waterway-объектов OSM. Ребра из пользовательского JSON игнорируются и не попадают в runtime-граф.'
     },
     map: {
