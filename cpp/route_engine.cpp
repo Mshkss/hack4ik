@@ -76,6 +76,11 @@ struct Edge {
     string source = "unknown";
 };
 
+struct GraphArc {
+    Edge edge;
+    const Surface* surface = nullptr;
+};
+
 struct NodeCoord {
     double lat = 0.0;
     double lon = 0.0;
@@ -531,19 +536,17 @@ static RouteResult calculate_route(const Scenario& scenario, const string& start
         return result;
     }
 
-    std::unordered_map<string, std::vector<Segment>> graph;
+    std::unordered_map<string, std::vector<GraphArc>> graph;
     for (const auto& edge : scenario.edges) {
         auto surface_it = scenario.surfaces.find(edge.surface);
         if (surface_it == scenario.surfaces.end()) continue;
         const Surface& surface = surface_it->second;
         if (surface.hard && !config.allow_hard) continue;
-        Segment forward = score_edge(edge, surface, config, mode, scenario.boat);
-        graph[edge.from].push_back(forward);
+        graph[edge.from].push_back({edge, &surface});
 
         Edge reverse = edge;
         std::swap(reverse.from, reverse.to);
-        Segment backward = score_edge(reverse, surface, config, mode, scenario.boat);
-        graph[reverse.from].push_back(backward);
+        graph[reverse.from].push_back({reverse, &surface});
     }
 
     const double INF = std::numeric_limits<double>::infinity();
@@ -566,7 +569,8 @@ static RouteResult calculate_route(const Scenario& scenario, const string& start
         if (closed.count(node)) continue;
         closed.insert(node);
         if (node == finish) break;
-        for (const auto& segment : graph[node]) {
+        for (const auto& arc : graph[node]) {
+            Segment segment = score_edge(arc.edge, *arc.surface, config, mode, scenario.boat);
             const string& next = segment.edge.to;
             if (closed.count(next)) continue;
             double candidate = dist[node] + segment.cost;
@@ -589,8 +593,14 @@ static RouteResult calculate_route(const Scenario& scenario, const string& start
 
     std::vector<Segment> reversed_segments;
     string cursor = finish;
+    std::unordered_set<string> reconstruction_seen;
     result.nodes.push_back(cursor);
     while (cursor != start) {
+        if (reconstruction_seen.count(cursor) || result.nodes.size() > node_set.size() + 1) {
+            result.error = "Internal route reconstruction cycle.";
+            return result;
+        }
+        reconstruction_seen.insert(cursor);
         auto prev_it = prev_node.find(cursor);
         if (prev_it == prev_node.end()) {
             result.error = "Internal route reconstruction error.";
