@@ -37,6 +37,21 @@
             Старт вручную
             <input id="startQueryInput" type="text" list="cityHints" placeholder="Красноярск или 55.99, 92.86">
           </label>
+          <div class="waypoint-panel">
+            <div class="waypoint-title">Промежуточные точки</div>
+            <label>
+              Точка 2
+              <input id="waypoint1Input" type="text" list="cityHints" placeholder="Остров Татышев или 56.01, 92.80">
+            </label>
+            <label>
+              Точка 3
+              <input id="waypoint2Input" type="text" list="cityHints" placeholder="Усть-Мана или 55.94, 92.46">
+            </label>
+            <label>
+              Точка 4
+              <input id="waypoint3Input" type="text" list="cityHints" placeholder="Пашенный или 55.98, 92.83">
+            </label>
+          </div>
           <label>
             Финиш из списка
             <select id="finishSelect"></select>
@@ -151,51 +166,12 @@
 
       <section class="details-grid">
         <section>
-          <h2>Что используется в расчёте</h2>
-          <div id="calcInputs" class="calc-inputs"></div>
-        </section>
-        <section>
-          <h2>Типы поверхностей графа</h2>
-          <div id="surfaceTable" class="surface-table"></div>
-        </section>
-        <section>
           <h2>Участки маршрута</h2>
-          <div class="table-wrap">
-            <table>
-              <thead>
-                <tr>
-                  <th>Откуда</th>
-                  <th>Куда</th>
-                  <th>Поверхность</th>
-                  <th>км</th>
-                  <th>мин</th>
-                  <th>л</th>
-                  <th>риск</th>
-                  <th>использовано</th>
-                </tr>
-              </thead>
-              <tbody id="segmentsBody"></tbody>
-            </table>
-          </div>
+          <div id="segmentsBody" class="route-segment-list"></div>
         </section>
         <section>
           <h2>Сравнение режимов</h2>
-          <div class="table-wrap">
-            <table>
-              <thead>
-                <tr>
-                  <th>Конфигурация</th>
-                  <th>Режим</th>
-                  <th>Маршрут</th>
-                  <th>км</th>
-                  <th>мин</th>
-                  <th>л</th>
-                  <th>риск</th>
-                </tr>
-              </thead>
-              <tbody id="compareBody"></tbody>
-            </table>
-          </div>
+          <div id="compareBody" class="compare-list"></div>
         </section>
       </section>
     </main>

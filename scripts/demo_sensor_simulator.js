@@ -1,6 +1,7 @@
 const http = require('http');
 
 const port = Number(process.env.PORT || 8081);
+const host = process.env.HOST || '127.0.0.1';
 const tickMs = Number(process.env.TICK_MS || 500);
 const speedMps = Number(process.env.SPEED_MPS || 8.5);
 
@@ -192,11 +193,11 @@ tick();
 setInterval(tick, Math.max(100, tickMs));
 
 server.on('error', (error) => {
-  console.error(`Demo sensor simulator failed to listen on 127.0.0.1:${port}: ${error.message}`);
+  console.error(`Demo sensor simulator failed to listen on ${host}:${port}: ${error.message}`);
   process.exit(1);
 });
 
-server.listen(port, '127.0.0.1', () => {
-  console.log(`Demo sensor simulator: http://127.0.0.1:${port}/api/v1/sensor-state`);
+server.listen(port, host, () => {
+  console.log(`Demo sensor simulator: http://${host}:${port}/api/v1/sensor-state`);
   console.log(`tickMs=${tickMs}, speedMps=${speedMps}, routeLengthM=${Math.round(routeLengthM)}`);
 });

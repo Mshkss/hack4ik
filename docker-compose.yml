@@ -1,0 +1,39 @@
+x-airboat-image: &airboat-image
+  build:
+    context: .
+  image: airboat-navigator-mvp:local
+
+services:
+  app:
+    <<: *airboat-image
+    ports:
+      - "${APP_PORT:-5173}:5173"
+    environment:
+      HOST: 0.0.0.0
+      PORT: 5173
+      SENSOR_STATE_MODE: demo
+      DEMO_SENSOR_STATE_URL: http://sensor:8081/api/v1/sensor-state
+      SENSOR_STATE_TIMEOUT_MS: 900
+    depends_on:
+      sensor:
+        condition: service_healthy
+
+  sensor:
+    <<: *airboat-image
+    command: npm run sensor:demo
+    ports:
+      - "${SENSOR_PORT:-8081}:8081"
+    environment:
+      HOST: 0.0.0.0
+      PORT: 8081
+      TICK_MS: 500
+      SPEED_MPS: 8.5
+    healthcheck:
+      test:
+        - CMD
+        - node
+        - -e
+        - "fetch('http://127.0.0.1:8081/health').then((r)=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"
+      interval: 5s
+      timeout: 3s
+      retries: 10

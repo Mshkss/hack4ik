@@ -232,6 +232,27 @@ button:disabled {
   margin-bottom: 14px;
 }
 
+.waypoint-panel {
+  display: grid;
+  gap: 8px;
+  margin-bottom: 14px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 10px;
+  background: #fbfcfc;
+}
+
+.waypoint-title {
+  color: var(--accent);
+  font-size: 13px;
+  font-weight: 800;
+}
+
+.controls .waypoint-panel label {
+  margin: 0;
+  font-size: 12px;
+}
+
 .tuning-panel {
   margin: 10px 0 14px;
   border: 1px solid var(--line);
@@ -450,6 +471,22 @@ button:disabled {
   border: 2px solid #fff;
   border-radius: 999px;
   background: var(--accent-2);
+}
+
+.route-stop-marker {
+  display: grid;
+  place-items: center;
+  border: 2px solid #ffffff;
+  border-radius: 999px;
+  background: var(--accent-2);
+  color: #ffffff;
+  box-shadow: 0 2px 7px rgba(20, 38, 34, 0.28);
+  font-size: 12px;
+  font-weight: 900;
+}
+
+.route-stop-marker span {
+  line-height: 1;
 }
 
 .edge {
@@ -697,6 +734,7 @@ tr:last-child td {
 
   .controls h2,
   .controls .hint,
+  .controls .waypoint-panel,
   .controls .pick-controls,
   .controls button {
     grid-column: 1 / -1;

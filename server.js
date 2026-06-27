@@ -383,6 +383,212 @@ async function fetchSensorState(modeValue) {
   }
 }
 
+function routeStopFromUrl(url, key, role, defaultLabel) {
+  const node = url.searchParams.get(key) || '';
+  const point = parsePoint(url.searchParams, key);
+  const label = url.searchParams.get(`${key}Label`) || point?.label || node || defaultLabel;
+  return { key, role, node, point, label };
+}
+
+function routeStopsFromUrl(url) {
+  const stops = [routeStopFromUrl(url, 'start', 'start', 'Старт')];
+  for (let index = 1; index <= 3; index++) {
+    const stop = routeStopFromUrl(url, `waypoint${index}`, 'waypoint', `Точка ${index + 1}`);
+    if (stop.node || stop.point) stops.push(stop);
+  }
+  stops.push(routeStopFromUrl(url, 'finish', 'finish', 'Финиш'));
+  return stops;
+}
+
+function unknownRouteStopPayload(stop, resolved) {
+  return {
+    ok: false,
+    route_available: false,
+    error: `Unknown route point: ${stop.label || stop.node || stop.key}`,
+    route_stop: {
+      key: stop.key,
+      role: stop.role,
+      label: stop.label,
+      requested_node: stop.node,
+      resolved_node: resolved?.node || null
+    },
+    warnings: [`Не удалось привязать точку маршрута "${stop.label || stop.key}" к текущему графу.`]
+  };
+}
+
+async function calculateRouteLeg(url, meta, fromStop, toStop, config, allowFallback) {
+  const resolvedStart = resolveRouteNode(meta, fromStop.node, fromStop.point);
+  const resolvedFinish = resolveRouteNode(meta, toStop.node, toStop.point);
+  const context = {
+    meta,
+    startPoint: fromStop.point,
+    finishPoint: toStop.point
+  };
+
+  if (!meta.nodeCoordinates?.[resolvedStart.node]) {
+    return unknownRouteStopPayload(fromStop, resolvedStart);
+  }
+  if (!meta.nodeCoordinates?.[resolvedFinish.node]) {
+    return unknownRouteStopPayload(toStop, resolvedFinish);
+  }
+
+  const direct = await runEngine(url, resolvedStart.node, resolvedFinish.node);
+  if (direct.ok) {
+    direct.requested_start = fromStop.node;
+    direct.requested_finish = toStop.node;
+    direct.water_start = resolvedStart.node;
+    direct.water_finish = resolvedFinish.node;
+    direct.route_leg = {
+      from_label: fromStop.label,
+      to_label: toStop.label,
+      from_key: fromStop.key,
+      to_key: toStop.key
+    };
+    if (resolvedStart.snapped || resolvedFinish.snapped) {
+      direct.route_advice = direct.route_advice || [];
+      direct.route_advice.unshift('Точки маршрута привязаны к ближайшим актуальным узлам водного графа.');
+    }
+    return decorateRoute(direct, context);
+  }
+
+  if (!allowFallback) return direct;
+
+  const targetPoint = toStop.point || meta.nodeCoordinates?.[resolvedFinish.node];
+  const canFallback = targetPoint && direct.error && direct.error.startsWith('Route is not available');
+  if (!canFallback) return direct;
+
+  const reachable = reachableNodes(resolvedStart.node, config);
+  const nearest = nearestReachableNode(meta, reachable, targetPoint);
+  if (!nearest || nearest.node === resolvedFinish.node) return direct;
+
+  const partial = await runEngine(url, resolvedStart.node, nearest.node);
+  if (!partial.ok) return direct;
+
+  partial.partial_route = true;
+  partial.route_available = true;
+  partial.requested_start = fromStop.node;
+  partial.requested_finish = toStop.node;
+  partial.water_start = resolvedStart.node;
+  partial.water_finish = nearest.node;
+  partial.route_leg = {
+    from_label: fromStop.label,
+    to_label: toStop.label,
+    from_key: fromStop.key,
+    to_key: toStop.key
+  };
+  partial.warnings = partial.warnings || [];
+  partial.warnings.unshift(`До выбранной точки "${toStop.label}" нет полного водного пути. Маршрут построен до ближайшей достижимой воды: ${nearest.node}.`);
+  const requestedFinishCoord = meta.nodeCoordinates?.[resolvedFinish.node];
+  const blockedLegs = requestedFinishCoord ? [{
+    kind: 'blocked_water',
+    label: 'Водный проезд не найден',
+    from: { lat: nearest.coord.lat, lon: nearest.coord.lon },
+    to: { lat: requestedFinishCoord.lat, lon: requestedFinishCoord.lon },
+    from_node: nearest.node,
+    to_node: resolvedFinish.node,
+    distance_km: haversineKm(nearest.coord, requestedFinishCoord)
+  }] : [];
+  return decorateRoute(partial, { ...context, finishPoint: targetPoint, blockedLegs });
+}
+
+function uniqueStrings(values) {
+  return [...new Set(values.filter(Boolean))];
+}
+
+function sumLegTotal(legs, key) {
+  return legs.reduce((sum, leg) => sum + Number(leg.totals?.[key] || 0), 0);
+}
+
+function mergeRouteLegs(legs, stops) {
+  const first = legs[0];
+  const routeNodes = [];
+  const routeSegments = [];
+  const accessLegs = [];
+  const blockedLegs = [];
+  const legSummaries = [];
+
+  legs.forEach((leg, index) => {
+    const nodes = leg.route?.nodes || [];
+    routeNodes.push(...(index === 0 ? nodes : nodes.slice(1)));
+    routeSegments.push(...(leg.route?.segments || []).map((segment) => ({
+      ...segment,
+      leg_index: index + 1,
+      leg_label: `${stops[index].label} -> ${stops[index + 1].label}`
+    })));
+    accessLegs.push(...(leg.access_legs || []).map((item) => ({ ...item, leg_index: index + 1 })));
+    blockedLegs.push(...(leg.blocked_legs || []).map((item) => ({ ...item, leg_index: index + 1 })));
+    legSummaries.push({
+      index: index + 1,
+      from_label: stops[index].label,
+      to_label: stops[index + 1].label,
+      water_start: leg.water_start,
+      water_finish: leg.water_finish,
+      distance_km: leg.totals?.distance_km || 0,
+      time_min: leg.totals?.time_min || 0,
+      fuel_l: leg.totals?.fuel_l || 0,
+      risk_points: leg.totals?.risk_points || 0
+    });
+  });
+
+  const distanceKm = sumLegTotal(legs, 'distance_km');
+  const timeH = sumLegTotal(legs, 'time_h');
+  const timeMin = sumLegTotal(legs, 'time_min');
+  const fuelL = sumLegTotal(legs, 'fuel_l');
+  const riskPoints = sumLegTotal(legs, 'risk_points');
+  const cost = sumLegTotal(legs, 'cost');
+  const walkDistanceKm = sumLegTotal(legs, 'walk_distance_km');
+  const walkTimeMin = sumLegTotal(legs, 'walk_time_min');
+  const tankL = first.totals?.tank_l || first.calculation_inputs?.boat?.tank_l || 0;
+  const reserveL = first.totals?.reserve_l || 0;
+
+  return {
+    ...first,
+    multi_route: true,
+    route_available: true,
+    requested_start: stops[0].node,
+    requested_finish: stops[stops.length - 1].node,
+    water_start: legs[0].water_start,
+    water_finish: legs[legs.length - 1].water_finish,
+    route_stops: stops.map((stop, index) => ({
+      index: index + 1,
+      key: stop.key,
+      role: stop.role,
+      node: stop.node,
+      label: stop.label,
+      point: stop.point ? { lat: stop.point.lat, lon: stop.point.lon } : null
+    })),
+    route_legs: legSummaries,
+    route: {
+      nodes: routeNodes,
+      segments: routeSegments
+    },
+    totals: {
+      ...first.totals,
+      distance_km: distanceKm,
+      time_h: timeH,
+      time_min: timeMin,
+      fuel_l: fuelL,
+      risk_points: riskPoints,
+      cost,
+      tank_l: tankL,
+      remainder_l: tankL ? tankL - fuelL : first.totals?.remainder_l,
+      reserve_l: reserveL,
+      walk_distance_km: walkDistanceKm,
+      walk_time_min: walkTimeMin,
+      total_distance_with_walk_km: distanceKm + walkDistanceKm,
+      total_time_with_walk_min: timeMin + walkTimeMin
+    },
+    access_legs: accessLegs,
+    blocked_legs: blockedLegs,
+    warnings: uniqueStrings(legs.flatMap((leg) => leg.warnings || [])),
+    route_advice: uniqueStrings([
+      `Маршрут собран из ${legs.length} участков через ${stops.length} точек.`,
+      ...legs.flatMap((leg) => leg.route_advice || [])
+    ]),
+    explanation: `Маршрут рассчитан как ${legs.length} последовательных участков через заданные точки.`
+  };
+}
+
 function route(req, res) {
   const url = new URL(req.url, `http://localhost:${port}`);
 
@@ -411,87 +617,38 @@ function route(req, res) {
     (async () => {
       try {
         const meta = readJson(metaPath);
-        const start = url.searchParams.get('start') || '';
-        const finish = url.searchParams.get('finish') || '';
         const config = url.searchParams.get('config') || 'без поддува';
-        const startPoint = parsePoint(url.searchParams, 'start');
-        const finishPoint = parsePoint(url.searchParams, 'finish');
-        const resolvedStart = resolveRouteNode(meta, start, startPoint);
-        const resolvedFinish = resolveRouteNode(meta, finish, finishPoint);
-        const context = { meta, startPoint, finishPoint };
-
-        if (!meta.nodeCoordinates?.[resolvedStart.node]) {
+        const stops = routeStopsFromUrl(url);
+        if (stops.length < 2) {
           sendJson(res, 200, {
             ok: false,
             route_available: false,
-            error: `Unknown start node: ${start}`,
-            warnings: ['Не удалось привязать старт к текущему графу. Поставь старт на карте ближе к рабочей области.']
-          });
-          return;
-        }
-        if (!meta.nodeCoordinates?.[resolvedFinish.node]) {
-          sendJson(res, 200, {
-            ok: false,
-            route_available: false,
-            error: `Unknown finish node: ${finish}`,
-            warnings: ['Не удалось привязать финиш к текущему графу. Поставь финиш на карте ближе к рабочей области.']
+            error: 'Route needs at least start and finish points.',
+            warnings: ['Нужно указать минимум старт и финиш.']
           });
           return;
         }
 
-        const direct = await runEngine(url, resolvedStart.node, resolvedFinish.node);
-        if (direct.ok) {
-          direct.requested_start = start;
-          direct.requested_finish = finish;
-          direct.water_start = resolvedStart.node;
-          direct.water_finish = resolvedFinish.node;
-          if (resolvedStart.snapped || resolvedFinish.snapped) {
-            direct.route_advice = direct.route_advice || [];
-            direct.route_advice.unshift('Старт/финиш привязаны к ближайшим актуальным узлам водного графа.');
+        const isMultiRoute = stops.length > 2;
+        const legs = [];
+        for (let index = 0; index < stops.length - 1; index++) {
+          const leg = await calculateRouteLeg(url, meta, stops[index], stops[index + 1], config, !isMultiRoute);
+          if (!leg.ok) {
+            leg.route_available = false;
+            leg.failed_leg_index = index + 1;
+            leg.failed_leg = {
+              from_label: stops[index].label,
+              to_label: stops[index + 1].label
+            };
+            leg.warnings = leg.warnings || [];
+            leg.warnings.unshift(`Не удалось построить участок ${index + 1}: ${stops[index].label} -> ${stops[index + 1].label}.`);
+            sendJson(res, 200, leg);
+            return;
           }
-          sendJson(res, 200, decorateRoute(direct, context));
-          return;
+          legs.push(leg);
         }
 
-        const targetPoint = finishPoint || meta.nodeCoordinates?.[resolvedFinish.node];
-        const canFallback = targetPoint && direct.error && direct.error.startsWith('Route is not available');
-        if (!canFallback) {
-          sendJson(res, 200, direct);
-          return;
-        }
-
-        const reachable = reachableNodes(resolvedStart.node, config);
-        const nearest = nearestReachableNode(meta, reachable, targetPoint);
-        if (!nearest || nearest.node === resolvedFinish.node) {
-          sendJson(res, 200, direct);
-          return;
-        }
-
-        const partial = await runEngine(url, resolvedStart.node, nearest.node);
-        if (!partial.ok) {
-          sendJson(res, 200, direct);
-          return;
-        }
-
-        partial.partial_route = true;
-        partial.route_available = true;
-        partial.requested_start = start;
-        partial.requested_finish = finish;
-        partial.water_start = resolvedStart.node;
-        partial.water_finish = nearest.node;
-        partial.warnings = partial.warnings || [];
-        partial.warnings.unshift(`До выбранного финиша нет полного водного пути. Маршрут построен до ближайшей достижимой воды: ${nearest.node}.`);
-        const requestedFinishCoord = meta.nodeCoordinates?.[resolvedFinish.node];
-        const blockedLegs = requestedFinishCoord ? [{
-          kind: 'blocked_water',
-          label: 'Водный проезд не найден',
-          from: { lat: nearest.coord.lat, lon: nearest.coord.lon },
-          to: { lat: requestedFinishCoord.lat, lon: requestedFinishCoord.lon },
-          from_node: nearest.node,
-          to_node: resolvedFinish.node,
-          distance_km: haversineKm(nearest.coord, requestedFinishCoord)
-        }] : [];
-        sendJson(res, 200, decorateRoute(partial, { ...context, finishPoint: targetPoint, blockedLegs }));
+        sendJson(res, 200, isMultiRoute ? mergeRouteLegs(legs, stops) : legs[0]);
       } catch (error) {
         sendJson(res, 500, { ok: false, error: error.message });
       }

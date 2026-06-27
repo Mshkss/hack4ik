@@ -33,6 +33,11 @@ const els = {
   finishSelect: document.querySelector('#finishSelect'),
   startQueryInput: document.querySelector('#startQueryInput'),
   finishQueryInput: document.querySelector('#finishQueryInput'),
+  waypointInputs: [
+    document.querySelector('#waypoint1Input'),
+    document.querySelector('#waypoint2Input'),
+    document.querySelector('#waypoint3Input')
+  ],
   cityHints: document.querySelector('#cityHints'),
   pickStartBtn: document.querySelector('#pickStartBtn'),
   pickFinishBtn: document.querySelector('#pickFinishBtn'),
@@ -59,9 +64,7 @@ const els = {
   realMap: document.querySelector('#realMap'),
   routeBadge: document.querySelector('#routeBadge'),
   summaryCards: document.querySelector('#summaryCards'),
-  calcInputs: document.querySelector('#calcInputs'),
   surfaceLegend: document.querySelector('#surfaceLegend'),
-  surfaceTable: document.querySelector('#surfaceTable'),
   warningsList: document.querySelector('#warningsList'),
   segmentsBody: document.querySelector('#segmentsBody'),
   compareBody: document.querySelector('#compareBody')
@@ -328,6 +331,14 @@ function edgeId(from, to) {
   return [from, to].sort().join(' -> ');
 }
 
+function routeSegmentByEdge() {
+  const map = new Map();
+  for (const segment of state.result?.route?.segments || []) {
+    map.set(edgeId(segment.from, segment.to), segment);
+  }
+  return map;
+}
+
 function haversineKm(a, b) {
   const radiusKm = 6371;
   const toRad = (value) => (value * Math.PI) / 180;
@@ -430,7 +441,8 @@ function resolveLocationQuery(rawValue, target) {
     .sort((a, b) => a.score - b.score || a.node.localeCompare(b.node, 'ru'));
 
   if (!candidates.length) {
-    throw new Error(`${target === 'start' ? 'Старт' : 'Финиш'} не найден. Напиши известную точку из списка или координаты: 55.99, 92.86`);
+    const targetLabel = target === 'start' ? 'Старт' : target === 'finish' ? 'Финиш' : 'Точка маршрута';
+    throw new Error(`${targetLabel} не найдена. Напиши известную точку из списка или координаты: 55.99, 92.86`);
   }
 
   const node = candidates[0].node;
@@ -482,9 +494,26 @@ function resolveEndpoint(target) {
   };
 }
 
+function resolveWaypoints() {
+  return els.waypointInputs
+    .map((input, index) => ({ input, index }))
+    .filter(({ input }) => input?.value?.trim())
+    .map(({ input, index }) => {
+      const resolved = resolveLocationQuery(input.value, `waypoint${index + 1}`);
+      return {
+        node: resolved.node,
+        point: resolved.point,
+        label: resolved.label,
+        source: resolved.source,
+        index
+      };
+    });
+}
+
 function buildRouteParams(config = els.configSelect.value, mode = els.modeSelect.value) {
   const start = resolveEndpoint('start');
   const finish = resolveEndpoint('finish');
+  const waypoints = resolveWaypoints();
   const params = new URLSearchParams({
     start: start.node,
     finish: finish.node,
@@ -495,6 +524,15 @@ function buildRouteParams(config = els.configSelect.value, mode = els.modeSelect
     params.set('startLat', String(start.point.lat));
     params.set('startLon', String(start.point.lon));
     params.set('startLabel', start.label);
+  }
+  for (const [index, waypoint] of waypoints.entries()) {
+    const key = `waypoint${index + 1}`;
+    params.set(key, waypoint.node);
+    params.set(`${key}Label`, waypoint.label);
+    if (waypoint.point) {
+      params.set(`${key}Lat`, String(waypoint.point.lat));
+      params.set(`${key}Lon`, String(waypoint.point.lon));
+    }
   }
   if (finish.point) {
     params.set('finishLat', String(finish.point.lat));
@@ -876,6 +914,7 @@ function drawMap() {
   }
 
   drawPickMarkers();
+  drawRouteStopMarkers();
   drawAccessLegs();
   drawBlockedLegs();
   drawVessel();
@@ -989,6 +1028,27 @@ function drawPickMarkers() {
   }
 }
 
+function drawRouteStopMarkers() {
+  const stops = state.result?.route_stops || [];
+  if (!stops.length) return;
+  const { meta } = state.scenario;
+  for (const stop of stops) {
+    const coord = stop.point || meta.nodeCoordinates?.[stop.node];
+    if (!coord) continue;
+    const marker = L.marker([coord.lat, coord.lon], {
+      icon: L.divIcon({
+        className: 'route-stop-marker',
+        html: `<span>${stop.index}</span>`,
+        iconSize: [26, 26],
+        iconAnchor: [13, 13]
+      }),
+      zIndexOffset: 900
+    });
+    marker.bindTooltip(`Точка ${stop.index}: ${escapeHtml(stop.label || stop.node)}`, { sticky: true });
+    marker.addTo(state.layers.picks);
+  }
+}
+
 function renderSummary() {
   const result = state.result;
   if (!result?.ok) {
@@ -1004,12 +1064,15 @@ function renderSummary() {
   const totals = result.totals;
   const walkDistanceKm = (result.access_legs || []).reduce((sum, leg) => sum + (leg.distance_km || 0), 0);
   const routeNodes = result.route.nodes;
-  const routeLabel = routeNodes.length > 6
+  const routeLabel = result.multi_route && result.route_stops?.length
+    ? `Через ${result.route_stops.length} точек · ${result.route.segments.length} сегм.`
+    : routeNodes.length > 6
     ? `${routeNodes[0]} → ${routeNodes[routeNodes.length - 1]} · ${result.route.segments.length} сегм.`
     : routeNodes.join(' → ');
   els.routeBadge.textContent = routeLabel;
   const metrics = [
     ['Длина', `${fmt(totals.distance_km)} км`],
+    ...(result.multi_route ? [['Точек', `${result.route_stops?.length || 0}`]] : []),
     ['Пешком', `${fmt(walkDistanceKm)} км`],
     ['Время', `${fmt(totals.time_min, 0)} мин`],
     ['Топливо', `${fmt(totals.fuel_l)} л`],
@@ -1107,6 +1170,12 @@ function renderCalculationInputs(result) {
       ${inputs.speed_policy?.narrow_waterway || 'На узких участках скорость снижается.'}<br>
       ${inputs.speed_policy?.motion_states || 'Режим движения выбирается по поверхности и риску.'}</p>
     </div>
+    ${result.multi_route && result.route_stops?.length ? `
+      <div class="calc-box">
+        <b>Точки маршрута</b>
+        <p>${result.route_stops.map((stop) => `${stop.index}. ${escapeHtml(stop.label || stop.node)}`).join('<br>')}</p>
+      </div>
+    ` : ''}
     ${(result.route_advice || []).length ? `
       <div class="calc-box">
         <b>Рекомендации по маршруту</b>
@@ -1152,11 +1221,14 @@ async function compareAll() {
     if (!result.ok) {
       return `<tr><td>${config}</td><td>${mode}</td><td colspan="5">${humanError(result.error)}</td></tr>`;
     }
+    const pathLabel = result.multi_route && result.route_stops?.length
+      ? result.route_stops.map((stop) => stop.label || stop.node).join(' → ')
+      : result.route.nodes.join(' → ');
     return `
       <tr>
         <td>${config}</td>
         <td>${mode}</td>
-        <td class="route-path">${result.route.nodes.join(' → ')}</td>
+        <td class="route-path">${escapeHtml(pathLabel)}</td>
         <td>${fmt(result.totals.distance_km)}</td>
         <td>${fmt(result.totals.time_min, 0)}</td>
         <td>${fmt(result.totals.fuel_l)}</td>
@@ -1234,7 +1306,7 @@ for (const control of tuningControls()) {
   control.addEventListener('input', () => scheduleCalculation());
 }
 
-for (const control of [els.startQueryInput, els.finishQueryInput]) {
+for (const control of [els.startQueryInput, ...els.waypointInputs, els.finishQueryInput]) {
   if (!control) continue;
   control.addEventListener('input', () => scheduleCalculation(800));
   control.addEventListener('change', () => runCalculation());
