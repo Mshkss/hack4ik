@@ -35,8 +35,11 @@ function haversineKm(a, b) {
 }
 
 function parsePoint(searchParams, prefix) {
-  const lat = Number(searchParams.get(`${prefix}Lat`));
-  const lon = Number(searchParams.get(`${prefix}Lon`));
+  const rawLat = searchParams.get(`${prefix}Lat`);
+  const rawLon = searchParams.get(`${prefix}Lon`);
+  if (rawLat === null || rawLon === null || rawLat === '' || rawLon === '') return null;
+  const lat = Number(rawLat);
+  const lon = Number(rawLon);
   if (!Number.isFinite(lat) || !Number.isFinite(lon)) return null;
   if (Math.abs(lat) > 90 || Math.abs(lon) > 180) return null;
   return {
