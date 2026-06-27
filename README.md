@@ -32,8 +32,14 @@ npm start
 Основной backend отдает состояние судна через:
 
 ```text
-GET /api/v1/sensor-state
+GET /api/v1/sensor-state?mode=demo|real|off
 ```
+
+В интерфейсе есть переключатель `Источник датчиков`:
+
+- `Demo simulator` — читает локальный simulator на `8081`;
+- `Real CAN/NMEA` — читает будущий реальный adapter;
+- `Отключены` — не опрашивает датчики, скрывает маркер судна и оставляет ручной расчет маршрута.
 
 По умолчанию `server.js` читает demo-источник:
 
@@ -50,7 +56,15 @@ PORT=8081 TICK_MS=500 SPEED_MPS=8.5 npm run sensor:demo
 Для реального Raspberry Pi/CAN режима frontend менять не нужно: достаточно поднять локальный adapter с тем же JSON-контрактом и указать:
 
 ```bash
-SENSOR_STATE_URL=http://127.0.0.1:<adapter-port>/api/v1/sensor-state npm start
+REAL_SENSOR_STATE_URL=http://127.0.0.1:<adapter-port>/api/v1/sensor-state npm start
+```
+
+Дополнительно доступны:
+
+```bash
+SENSOR_STATE_MODE=off npm start
+DEMO_SENSOR_STATE_URL=http://127.0.0.1:8081/api/v1/sensor-state npm start
+SENSOR_STATE_TIMEOUT_MS=900 npm start
 ```
 
 ## Запуск в Docker

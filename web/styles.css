@@ -146,6 +146,12 @@ h3 {
   color: var(--risk);
 }
 
+.sensor-pill.sensor-disabled {
+  border-color: var(--line);
+  background: #f3f5f4;
+  color: var(--muted);
+}
+
 .layout {
   grid-template-columns: 300px minmax(0, 1fr) 330px;
   align-items: stretch;

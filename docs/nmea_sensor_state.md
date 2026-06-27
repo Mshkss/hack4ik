@@ -8,15 +8,29 @@
 web UI -> GET /api/v1/sensor-state -> server.js -> sensor source
 ```
 
-Источник sensor source выбирается переменной окружения `SENSOR_STATE_URL`.
+Источник sensor source выбирается в UI через `Источник датчиков` или параметром API `mode`.
 
 Для demo-режима:
 
 ```text
-SENSOR_STATE_URL=http://127.0.0.1:8081/api/v1/sensor-state
+GET /api/v1/sensor-state?mode=demo
+DEMO_SENSOR_STATE_URL=http://127.0.0.1:8081/api/v1/sensor-state
 ```
 
-Для реального режима на Raspberry Pi этот URL должен указывать на локальный адаптер, который читает CAN/NMEA2000 и отдает тот же JSON.
+Для реального режима на Raspberry Pi:
+
+```text
+GET /api/v1/sensor-state?mode=real
+REAL_SENSOR_STATE_URL=http://127.0.0.1:<adapter-port>/api/v1/sensor-state
+```
+
+Чтобы полностью отключить датчики:
+
+```text
+GET /api/v1/sensor-state?mode=off
+```
+
+В режиме `off` frontend не опрашивает API по таймеру, скрывает маркер судна и отключает кнопку использования GPS как старта. Ручной расчет маршрута продолжает работать.
 
 ## Контракт
 

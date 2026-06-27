@@ -6,7 +6,13 @@ const { execFile } = require('child_process');
 const root = __dirname;
 const port = Number(process.env.PORT || 5173);
 const host = process.env.HOST || '127.0.0.1';
-const sensorStateUrl = process.env.SENSOR_STATE_URL || 'http://127.0.0.1:8081/api/v1/sensor-state';
+const defaultSensorMode = process.env.SENSOR_STATE_MODE || 'demo';
+const demoSensorStateUrl = process.env.DEMO_SENSOR_STATE_URL
+  || process.env.SENSOR_STATE_URL
+  || 'http://127.0.0.1:8081/api/v1/sensor-state';
+const realSensorStateUrl = process.env.REAL_SENSOR_STATE_URL
+  || process.env.SENSOR_STATE_URL
+  || 'http://127.0.0.1:8082/api/v1/sensor-state';
 const sensorStateTimeoutMs = Number(process.env.SENSOR_STATE_TIMEOUT_MS || 900);
 const enginePath = path.join(root, 'build', 'route_engine');
 const routeDataPath = path.join(root, 'app_data', 'scenario.route');
@@ -302,12 +308,24 @@ function readJson(file) {
   return JSON.parse(fs.readFileSync(file, 'utf8'));
 }
 
-function unavailableSensorState(reason) {
+function normalizeSensorMode(value) {
+  const mode = String(value || '').trim().toLowerCase();
+  if (['off', 'disabled', 'none', 'manual'].includes(mode)) return 'off';
+  if (['real', 'can', 'nmea', 'nmea2000'].includes(mode)) return 'real';
+  if (['demo', 'mock', 'simulator'].includes(mode)) return 'demo';
+  return 'demo';
+}
+
+function sensorStateUrlForMode(mode) {
+  return mode === 'real' ? realSensorStateUrl : demoSensorStateUrl;
+}
+
+function unavailableSensorState(reason, source = 'unavailable') {
   const updatedAt = new Date().toISOString();
   return {
     nmea: {
       online: false,
-      source: 'unavailable',
+      source,
       last_frame_age_ms: 0,
       updated_at: updatedAt,
       error: reason || 'sensor source unavailable'
@@ -342,11 +360,14 @@ function unavailableSensorState(reason) {
   };
 }
 
-async function fetchSensorState() {
+async function fetchSensorState(modeValue) {
+  const mode = normalizeSensorMode(modeValue || defaultSensorMode);
+  if (mode === 'off') return unavailableSensorState('sensor mode is disabled', 'disabled');
+
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), sensorStateTimeoutMs);
   try {
-    const response = await fetch(sensorStateUrl, {
+    const response = await fetch(sensorStateUrlForMode(mode), {
       signal: controller.signal,
       headers: { Accept: 'application/json' }
     });
@@ -356,7 +377,7 @@ async function fetchSensorState() {
     }
     return payload;
   } catch (error) {
-    return unavailableSensorState(error.name === 'AbortError' ? 'sensor source timeout' : error.message);
+    return unavailableSensorState(error.name === 'AbortError' ? 'sensor source timeout' : error.message, `${mode}_unavailable`);
   } finally {
     clearTimeout(timeout);
   }
@@ -367,7 +388,7 @@ function route(req, res) {
 
   if (url.pathname === '/api/v1/sensor-state') {
     (async () => {
-      sendJson(res, 200, await fetchSensorState());
+      sendJson(res, 200, await fetchSensorState(url.searchParams.get('mode')));
     })();
     return;
   }

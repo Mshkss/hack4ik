@@ -1,7 +1,10 @@
+const sensorModeStorageKey = 'airboat.sensorMode';
+
 const state = {
   scenario: null,
   result: null,
   sensorState: null,
+  sensorMode: 'demo',
   sensorPollTimer: null,
   compare: [],
   pickMode: null,
@@ -35,6 +38,7 @@ const els = {
   pickFinishBtn: document.querySelector('#pickFinishBtn'),
   useGpsStartBtn: document.querySelector('#useGpsStartBtn'),
   snapStatus: document.querySelector('#snapStatus'),
+  sensorModeSelect: document.querySelector('#sensorModeSelect'),
   sensorStatus: document.querySelector('#sensorStatus'),
   sensorDetails: document.querySelector('#sensorDetails'),
   configSelect: document.querySelector('#configSelect'),
@@ -99,6 +103,72 @@ function destinationPoint(point, bearingDegValue, distanceM) {
 
 function toRad(value) {
   return (value * Math.PI) / 180;
+}
+
+function normalizeSensorMode(value) {
+  return ['demo', 'real', 'off'].includes(value) ? value : 'demo';
+}
+
+function sensorModeLabel(mode = state.sensorMode) {
+  if (mode === 'real') return 'Real CAN/NMEA';
+  if (mode === 'off') return 'отключены';
+  return 'Demo simulator';
+}
+
+function loadSensorMode() {
+  try {
+    state.sensorMode = normalizeSensorMode(window.localStorage.getItem(sensorModeStorageKey) || 'demo');
+  } catch (_) {
+    state.sensorMode = 'demo';
+  }
+  if (els.sensorModeSelect) els.sensorModeSelect.value = state.sensorMode;
+}
+
+function saveSensorMode(mode) {
+  try {
+    window.localStorage.setItem(sensorModeStorageKey, mode);
+  } catch (_) {
+    // localStorage can be unavailable in hardened browser contexts.
+  }
+}
+
+function disabledSensorState() {
+  const updatedAt = new Date().toISOString();
+  return {
+    nmea: {
+      online: false,
+      source: 'disabled',
+      last_frame_age_ms: 0,
+      updated_at: updatedAt
+    },
+    position: {
+      valid: false,
+      lat: null,
+      lon: null,
+      age_ms: 0,
+      updated_at: updatedAt
+    },
+    motion: {
+      valid: false,
+      sog_mps: null,
+      sog_kmh: null,
+      cog_deg: null,
+      heading_deg: null,
+      updated_at: updatedAt
+    },
+    depth: {
+      valid: false,
+      depth_m: null,
+      updated_at: updatedAt
+    },
+    engine: {
+      rpm_valid: false,
+      rpm: null,
+      fuel_rate_valid: false,
+      fuel_rate_lph: null,
+      updated_at: updatedAt
+    }
+  };
 }
 
 function listItems(items = []) {
@@ -477,6 +547,10 @@ async function applyMapPick(latlng) {
 }
 
 async function applySensorStart() {
+  if (state.sensorMode === 'off') {
+    els.snapStatus.textContent = 'Датчики отключены. Включи Demo simulator или Real CAN/NMEA, чтобы взять старт из GPS.';
+    return;
+  }
   if (!validSensorPosition()) {
     els.snapStatus.textContent = 'Нет актуальной позиции судна.';
     return;
@@ -510,6 +584,21 @@ async function applySensorStart() {
 }
 
 function renderSensorState() {
+  if (state.sensorMode === 'off') {
+    if (els.sensorStatus) {
+      els.sensorStatus.textContent = 'Датчики: отключены';
+      els.sensorStatus.classList.remove('sensor-online', 'sensor-offline');
+      els.sensorStatus.classList.add('sensor-disabled');
+    }
+    if (els.useGpsStartBtn) {
+      els.useGpsStartBtn.disabled = true;
+    }
+    if (els.sensorDetails) {
+      els.sensorDetails.textContent = 'Ручной режим: датчики не используются.';
+    }
+    return;
+  }
+
   const sensor = state.sensorState;
   const online = Boolean(sensor?.nmea?.online);
   const hasPosition = validSensorPosition(sensor);
@@ -520,8 +609,9 @@ function renderSensorState() {
 
   if (els.sensorStatus) {
     els.sensorStatus.textContent = online
-      ? `NMEA: ${source}${hasPosition ? ` · ${speed}` : ''}`
-      : 'NMEA: нет данных';
+      ? `Датчики ${sensorModeLabel()}: ${source}${hasPosition ? ` · ${speed}` : ''}`
+      : `Датчики ${sensorModeLabel()}: нет данных`;
+    els.sensorStatus.classList.remove('sensor-disabled');
     els.sensorStatus.classList.toggle('sensor-online', online && hasPosition);
     els.sensorStatus.classList.toggle('sensor-offline', !online || !hasPosition);
   }
@@ -551,9 +641,21 @@ function renderSensorState() {
 }
 
 async function updateSensorState() {
+  if (state.sensorMode === 'off') {
+    state.sensorState = disabledSensorState();
+    renderSensorState();
+    drawVessel();
+    return;
+  }
+
+  const requestMode = state.sensorMode;
   try {
-    state.sensorState = await fetchJson('/api/v1/sensor-state');
+    const params = new URLSearchParams({ mode: requestMode });
+    const payload = await fetchJson(`/api/v1/sensor-state?${params}`);
+    if (requestMode !== state.sensorMode) return;
+    state.sensorState = payload;
   } catch (error) {
+    if (requestMode !== state.sensorMode) return;
     const updatedAt = new Date().toISOString();
     state.sensorState = {
       nmea: { online: false, source: 'web_error', last_frame_age_ms: 0, updated_at: updatedAt, error: error.message },
@@ -568,9 +670,31 @@ async function updateSensorState() {
 }
 
 function startSensorPolling() {
+  if (state.sensorMode === 'off') {
+    stopSensorPolling();
+    updateSensorState();
+    return;
+  }
   if (state.sensorPollTimer) return;
   updateSensorState();
   state.sensorPollTimer = window.setInterval(updateSensorState, 750);
+}
+
+function stopSensorPolling() {
+  if (!state.sensorPollTimer) return;
+  window.clearInterval(state.sensorPollTimer);
+  state.sensorPollTimer = null;
+}
+
+function setSensorMode(mode) {
+  state.sensorMode = normalizeSensorMode(mode);
+  if (els.sensorModeSelect) els.sensorModeSelect.value = state.sensorMode;
+  saveSensorMode(state.sensorMode);
+  stopSensorPolling();
+  state.sensorState = state.sensorMode === 'off' ? disabledSensorState() : null;
+  renderSensorState();
+  drawVessel();
+  startSensorPolling();
 }
 
 function surfaceColor(surface, active = false) {
@@ -1043,6 +1167,7 @@ async function compareAll() {
 }
 
 async function init() {
+  loadSensorMode();
   state.scenario = await fetchJson('/api/scenario');
   fillControls();
   renderSurfaceLegend();
@@ -1059,6 +1184,11 @@ els.calculateBtn.addEventListener('click', () => {
 
 els.pickStartBtn.addEventListener('click', () => setPickMode('start'));
 els.pickFinishBtn.addEventListener('click', () => setPickMode('finish'));
+if (els.sensorModeSelect) {
+  els.sensorModeSelect.addEventListener('change', () => {
+    setSensorMode(els.sensorModeSelect.value);
+  });
+}
 els.useGpsStartBtn.addEventListener('click', () => {
   applySensorStart().catch((error) => {
     state.result = { ok: false, error: error.message };

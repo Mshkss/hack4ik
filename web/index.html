@@ -46,6 +46,14 @@
             <input id="finishQueryInput" type="text" list="cityHints" placeholder="Дивногорск или 55.96, 92.38">
           </label>
           <datalist id="cityHints"></datalist>
+          <label class="sensor-mode-control">
+            Источник датчиков
+            <select id="sensorModeSelect">
+              <option value="demo">Demo simulator</option>
+              <option value="real">Real CAN/NMEA</option>
+              <option value="off">Отключены</option>
+            </select>
+          </label>
           <div class="pick-controls">
             <button id="pickStartBtn" type="button" class="secondary-btn">Поставить старт на карте</button>
             <button id="pickFinishBtn" type="button" class="secondary-btn">Поставить финиш на карте</button>
