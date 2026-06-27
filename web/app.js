@@ -340,16 +340,17 @@ function initMap() {
     zoomControl: true,
     scrollWheelZoom: true,
     zoomSnap: 0.25,
-    preferCanvas: true
+    preferCanvas: true,
+    attributionControl: false
   });
 
-  state.layers.osm = L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-    maxZoom: 18,
+  state.layers.osm = L.tileLayer('https://{s}.basemaps.cartocdn.com/light_nolabels/{z}/{x}/{y}{r}.png', {
+    maxZoom: 20,
+    subdomains: 'abcd',
     tileSize: 256,
     updateWhenIdle: true,
     keepBuffer: 4,
-    opacity: 0.42,
-    attribution: '© OpenStreetMap contributors'
+    opacity: 0.62
   }).addTo(state.map);
 
   state.layers.base = L.layerGroup().addTo(state.map);

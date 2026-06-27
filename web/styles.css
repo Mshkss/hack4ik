@@ -314,6 +314,10 @@ button:hover {
   margin: 10px;
 }
 
+.leaflet-control-attribution {
+  display: none !important;
+}
+
 .leaflet-control-zoom a {
   display: block;
   width: 30px;

@@ -1017,8 +1017,8 @@ function main() {
       explanation: 'Рабочий граф строится как треугольный navmesh по полигонам surface_zones.geojson с учетом inner-дыр multipolygon и линейных waterway-объектов OSM. Ребра из пользовательского JSON игнорируются и не попадают в runtime-граф.'
     },
     map: {
-      provider: 'OpenStreetMap raster tiles via Leaflet + local generated surface zones',
-      attribution: '© OpenStreetMap contributors',
+      provider: 'CARTO Positron light no-label raster tiles via Leaflet + local generated surface zones',
+      attribution: 'Hidden in UI; attribution kept in project documentation',
       area_label: workingAreaLabel,
       bounds: [
         [graphBounds.south, graphBounds.west],
