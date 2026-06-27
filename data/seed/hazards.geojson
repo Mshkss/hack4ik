@@ -1,0 +1,84 @@
+{
+  "type": "FeatureCollection",
+  "name": "hazards_seed",
+  "features": [
+    {
+      "type": "Feature",
+      "id": "hazard_shallow_01",
+      "properties": {
+        "hazard_type": "shallow",
+        "label": "Мелководная зона",
+        "risk_delta": 0.25,
+        "recommended_action": "Предупредить пользователя и увеличить стоимость участков.",
+        "source": "manual_seed",
+        "confidence": 0.35,
+        "navigation_grade": false,
+        "updated_at": "2026-06-26"
+      },
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [
+          [
+            [92.810, 55.990],
+            [92.860, 55.990],
+            [92.860, 56.015],
+            [92.810, 56.015],
+            [92.810, 55.990]
+          ]
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "id": "hazard_reed_01",
+      "properties": {
+        "hazard_type": "reed",
+        "label": "Камышовый проход",
+        "risk_delta": 0.35,
+        "recommended_action": "Разрешать только с поддувом и показывать высокий риск.",
+        "source": "manual_seed",
+        "confidence": 0.3,
+        "navigation_grade": false,
+        "updated_at": "2026-06-26"
+      },
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [
+          [
+            [92.850, 55.980],
+            [92.890, 55.980],
+            [92.890, 56.000],
+            [92.850, 56.000],
+            [92.850, 55.980]
+          ]
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "id": "hazard_blocked_01",
+      "properties": {
+        "hazard_type": "blocked",
+        "label": "Запретная береговая зона",
+        "risk_delta": 1.0,
+        "recommended_action": "Исключить из маршрута.",
+        "source": "manual_seed",
+        "confidence": 0.4,
+        "navigation_grade": false,
+        "updated_at": "2026-06-26"
+      },
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [
+          [
+            [92.915, 55.985],
+            [92.945, 55.985],
+            [92.945, 56.005],
+            [92.915, 56.005],
+            [92.915, 55.985]
+          ]
+        ]
+      }
+    }
+  ]
+}

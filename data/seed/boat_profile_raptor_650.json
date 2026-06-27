@@ -1,0 +1,70 @@
+{
+  "schema_version": "0.1",
+  "data_status": "seed",
+  "navigation_grade": false,
+  "source": "case_pdf_and_research_assumptions",
+  "updated_at": "2026-06-26",
+  "boat": {
+    "id": "raptor_650",
+    "name": "Raptor 650",
+    "type": "airboat",
+    "length_m": 6.9,
+    "width_m": 2.45,
+    "capacity_people": 6,
+    "payload_kg_range": [1000, 1500],
+    "engine": {
+      "model": "Honda J35",
+      "power_hp": 280
+    },
+    "fuel": {
+      "tank_capacity_l": 370,
+      "base_consumption_l_per_km_range": [0.7, 1.0],
+      "mvp_default_consumption_l_per_km": 0.85,
+      "safe_reserve_ratio": 0.2
+    },
+    "variants": [
+      {
+        "id": "base",
+        "label": "Без поддува",
+        "blower_enabled": false,
+        "fuel_multiplier": 1.0,
+        "risk_multiplier_on_complex_surface": 1.0
+      },
+      {
+        "id": "blower",
+        "label": "С поддувом",
+        "blower_enabled": true,
+        "fuel_multiplier": 1.15,
+        "risk_multiplier_on_complex_surface": 0.8
+      }
+    ],
+    "payload_profiles": [
+      {
+        "id": "light",
+        "label": "Легкая загрузка",
+        "payload_kg": 250,
+        "fuel_multiplier": 1.0,
+        "risk_multiplier": 1.0
+      },
+      {
+        "id": "medium",
+        "label": "Средняя загрузка",
+        "payload_kg": 700,
+        "fuel_multiplier": 1.1,
+        "risk_multiplier": 1.08
+      },
+      {
+        "id": "full",
+        "label": "Полная загрузка",
+        "payload_kg": 1300,
+        "fuel_multiplier": 1.25,
+        "risk_multiplier": 1.2
+      }
+    ]
+  },
+  "notes": [
+    "Параметры длины, ширины, двигателя, бака, расхода и грузоподъемности взяты из постановки кейса.",
+    "Коэффициенты вариантов и загрузки являются MVP-допущениями и требуют экспертной калибровки.",
+    "Данные не предназначены для реальной навигации."
+  ]
+}

@@ -1,0 +1,107 @@
+{
+  "schema_version": "0.1",
+  "updated_at": "2026-06-26",
+  "status": "collection_started_with_raw_osm",
+  "navigation_grade": false,
+  "workspace": "/Users/nikitanazarov/Documents/Хакатончик",
+  "seed_area": {
+    "id": "demo_area_yenisei_krasnoyarsk_seed",
+    "bbox": [92.73, 55.95, 92.98, 56.05],
+    "reason": "Стартовая демо-зона для MVP. Требует замены на фактическую область кейса."
+  },
+  "created_datasets": [
+    {
+      "path": "data/seed/boat_profile_raptor_650.json",
+      "type": "boat_profile",
+      "source": "case_pdf_and_research_assumptions",
+      "status": "created"
+    },
+    {
+      "path": "data/seed/surface_costs.json",
+      "type": "cost_model",
+      "source": "manual_seed_from_research",
+      "status": "created"
+    },
+    {
+      "path": "data/seed/demo_area.geojson",
+      "type": "geojson_area",
+      "source": "manual_seed",
+      "status": "created"
+    },
+    {
+      "path": "data/seed/route_graph.geojson",
+      "type": "geojson_route_graph",
+      "source": "manual_seed",
+      "status": "created"
+    },
+    {
+      "path": "data/seed/hazards.geojson",
+      "type": "geojson_hazards",
+      "source": "manual_seed",
+      "status": "created"
+    },
+    {
+      "path": "data/seed/boat_state_sample.json",
+      "type": "boat_state",
+      "source": "manual_seed",
+      "status": "created"
+    },
+    {
+      "path": "data/seed/test_scenarios.json",
+      "type": "test_scenarios",
+      "source": "manual_seed",
+      "status": "created"
+    }
+  ],
+  "collected_datasets": [
+    {
+      "path": "data/raw/osm_krasnoyarsk_yenisei_overpass.json",
+      "type": "osm_overpass_raw",
+      "source": "OpenStreetMap via Overpass API",
+      "status": "collected",
+      "collected_at": "2026-06-26"
+    },
+    {
+      "path": "data/collected/osm_krasnoyarsk_yenisei_summary.json",
+      "type": "collection_summary",
+      "source": "derived_from_osm_overpass_raw",
+      "status": "created",
+      "collected_at": "2026-06-26"
+    },
+    {
+      "path": "data/collected/osm_water_features_preview.geojson",
+      "type": "geojson_preview",
+      "source": "derived_from_osm_overpass_raw",
+      "status": "created",
+      "collected_at": "2026-06-26"
+    }
+  ],
+  "external_sources_to_collect": [
+    {
+      "name": "OpenStreetMap",
+      "url": "https://www.openstreetmap.org/",
+      "target_raw_path": "data/raw/osm_krasnoyarsk_yenisei_overpass.json",
+      "status": "collected_initial_bbox"
+    },
+    {
+      "name": "Overpass API",
+      "url": "https://wiki.openstreetmap.org/wiki/Overpass_API",
+      "target_raw_path": "data/raw/osm_krasnoyarsk_yenisei_overpass.json",
+      "status": "collected_initial_bbox"
+    },
+    {
+      "name": "OSM copyright",
+      "url": "https://www.openstreetmap.org/copyright",
+      "target_raw_path": null,
+      "status": "documented"
+    }
+  ],
+  "next_steps": [
+    "Подтвердить фактическую демо-географию кейса.",
+    "Выгрузить OSM/Overpass данные по bbox.",
+    "Преобразовать сырую выгрузку в слои воды, берега и инфраструктуры.",
+    "Сверить ручной route_graph с реальными водными объектами.",
+    "Собрать экспертные точки риска и мелей."
+  ],
+  "disclaimer": "Seed-данные демонстрационные и не предназначены для реальной навигации."
+}

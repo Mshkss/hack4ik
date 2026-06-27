@@ -1,0 +1,43 @@
+{
+  "schema_version": "0.1",
+  "data_status": "seed",
+  "navigation_grade": false,
+  "source": "manual_seed",
+  "updated_at": "2026-06-26",
+  "boat_id": "raptor_650",
+  "timestamp": "2026-06-26T00:00:00Z",
+  "position": {
+    "lat": 56.018,
+    "lon": 92.745,
+    "accuracy_m": 25,
+    "source": "manual"
+  },
+  "motion": {
+    "speed_kmh": 0,
+    "course_deg": null,
+    "heading_deg": null
+  },
+  "trip": {
+    "start_node": "start_base",
+    "finish_node": "finish_camp",
+    "route_mode": "safe"
+  },
+  "configuration": {
+    "variant_id": "blower",
+    "blower_enabled": true,
+    "payload_profile_id": "medium",
+    "payload_kg": 700
+  },
+  "fuel": {
+    "remaining_l": 210,
+    "source": "manual",
+    "safe_reserve_ratio": 0.2
+  },
+  "data_quality": {
+    "confidence": 0.5,
+    "warnings": [
+      "seed_data_only",
+      "not_navigation_grade"
+    ]
+  }
+}

@@ -1,0 +1,69 @@
+{
+  "schema_version": "0.1",
+  "data_status": "seed",
+  "navigation_grade": false,
+  "source": "manual_seed",
+  "updated_at": "2026-06-26",
+  "scenarios": [
+    {
+      "id": "safe_route_without_blower",
+      "label": "Безопасный маршрут без поддува",
+      "start_node": "start_base",
+      "finish_node": "finish_camp",
+      "route_mode": "safe",
+      "variant_id": "base",
+      "payload_profile_id": "medium",
+      "fuel_remaining_l": 210,
+      "expected_behavior": [
+        "Маршрут избегает ребер, где requires_blower=true.",
+        "Вероятный путь идет через main_channel и island_south.",
+        "Система объясняет, что короткий проход через камыш недоступен без поддува."
+      ]
+    },
+    {
+      "id": "short_route_with_blower",
+      "label": "Короткий маршрут с поддувом",
+      "start_node": "start_base",
+      "finish_node": "finish_camp",
+      "route_mode": "shortest",
+      "variant_id": "blower",
+      "payload_profile_id": "medium",
+      "fuel_remaining_l": 210,
+      "expected_behavior": [
+        "Система может выбрать короткий путь через shallow_gate и reed_cut.",
+        "Карточка показывает повышенный риск и расход.",
+        "В объяснении указано, что участок допустим благодаря поддуву."
+      ]
+    },
+    {
+      "id": "economy_route_low_fuel",
+      "label": "Экономичный маршрут при ограниченном топливе",
+      "start_node": "start_base",
+      "finish_node": "finish_camp",
+      "route_mode": "economy",
+      "variant_id": "base",
+      "payload_profile_id": "full",
+      "fuel_remaining_l": 35,
+      "expected_behavior": [
+        "Система проверяет резерв топлива.",
+        "Если безопасный резерв нарушен, показывает предупреждение.",
+        "Маршрут не должен молча считаться безопасным."
+      ]
+    },
+    {
+      "id": "compare_modes",
+      "label": "Сравнение режимов",
+      "start_node": "start_base",
+      "finish_node": "finish_camp",
+      "route_modes": ["shortest", "fastest", "economy", "safe"],
+      "variant_id": "blower",
+      "payload_profile_id": "medium",
+      "fuel_remaining_l": 210,
+      "expected_behavior": [
+        "Разные режимы возвращают разные метрики.",
+        "Если маршруты совпали, система объясняет причину.",
+        "Пользователь видит длину, время, расход, риск."
+      ]
+    }
+  ]
+}

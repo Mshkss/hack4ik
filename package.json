@@ -1,0 +1,15 @@
+{
+  "name": "airboat-navigator-mvp",
+  "version": "0.1.0",
+  "private": true,
+  "description": "MVP web app for airboat route calculation with C++ routing core.",
+  "scripts": {
+    "import": "node scripts/import_pipisa.js",
+    "build:engine": "mkdir -p build && g++ -std=c++17 -O2 -Wall -Wextra cpp/route_engine.cpp -o build/route_engine",
+    "build": "npm run import && npm run build:engine",
+    "start": "node server.js"
+  },
+  "engines": {
+    "node": ">=18"
+  }
+}

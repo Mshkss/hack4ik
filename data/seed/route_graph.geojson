@@ -1,0 +1,273 @@
+{
+  "type": "FeatureCollection",
+  "name": "route_graph_seed",
+  "features": [
+    {
+      "type": "Feature",
+      "id": "node_start_base",
+      "properties": {
+        "kind": "node",
+        "node_id": "start_base",
+        "label": "База",
+        "allowed_as_start": true,
+        "allowed_as_finish": true,
+        "source": "manual_seed"
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [92.745, 56.018]
+      }
+    },
+    {
+      "type": "Feature",
+      "id": "node_main_channel",
+      "properties": {
+        "kind": "node",
+        "node_id": "main_channel",
+        "label": "Основной фарватер",
+        "allowed_as_start": false,
+        "allowed_as_finish": false,
+        "source": "manual_seed"
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [92.805, 56.012]
+      }
+    },
+    {
+      "type": "Feature",
+      "id": "node_shallow_gate",
+      "properties": {
+        "kind": "node",
+        "node_id": "shallow_gate",
+        "label": "Вход в мелководье",
+        "allowed_as_start": false,
+        "allowed_as_finish": false,
+        "source": "manual_seed"
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [92.835, 56.000]
+      }
+    },
+    {
+      "type": "Feature",
+      "id": "node_reed_cut",
+      "properties": {
+        "kind": "node",
+        "node_id": "reed_cut",
+        "label": "Короткий проход через камыш",
+        "allowed_as_start": false,
+        "allowed_as_finish": false,
+        "source": "manual_seed"
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [92.875, 55.990]
+      }
+    },
+    {
+      "type": "Feature",
+      "id": "node_island_south",
+      "properties": {
+        "kind": "node",
+        "node_id": "island_south",
+        "label": "Обход острова с юга",
+        "allowed_as_start": false,
+        "allowed_as_finish": false,
+        "source": "manual_seed"
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [92.900, 55.975]
+      }
+    },
+    {
+      "type": "Feature",
+      "id": "node_finish_camp",
+      "properties": {
+        "kind": "node",
+        "node_id": "finish_camp",
+        "label": "Точка Б",
+        "allowed_as_start": true,
+        "allowed_as_finish": true,
+        "source": "manual_seed"
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [92.955, 55.970]
+      }
+    },
+    {
+      "type": "Feature",
+      "id": "edge_e01",
+      "properties": {
+        "kind": "edge",
+        "edge_id": "e01",
+        "from": "start_base",
+        "to": "main_channel",
+        "surface": "deep_water",
+        "distance_km": 4.1,
+        "risk": 0.16,
+        "requires_blower": false,
+        "confidence": 0.45,
+        "source": "manual_seed",
+        "explanation": "Стартовый выход на основную воду."
+      },
+      "geometry": {
+        "type": "LineString",
+        "coordinates": [
+          [92.745, 56.018],
+          [92.805, 56.012]
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "id": "edge_e02",
+      "properties": {
+        "kind": "edge",
+        "edge_id": "e02",
+        "from": "main_channel",
+        "to": "island_south",
+        "surface": "deep_water",
+        "distance_km": 7.8,
+        "risk": 0.2,
+        "requires_blower": false,
+        "confidence": 0.42,
+        "source": "manual_seed",
+        "explanation": "Более длинный, но спокойный водный обход."
+      },
+      "geometry": {
+        "type": "LineString",
+        "coordinates": [
+          [92.805, 56.012],
+          [92.855, 55.995],
+          [92.900, 55.975]
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "id": "edge_e03",
+      "properties": {
+        "kind": "edge",
+        "edge_id": "e03",
+        "from": "island_south",
+        "to": "finish_camp",
+        "surface": "deep_water",
+        "distance_km": 3.7,
+        "risk": 0.18,
+        "requires_blower": false,
+        "confidence": 0.42,
+        "source": "manual_seed",
+        "explanation": "Финальный водный участок к точке Б."
+      },
+      "geometry": {
+        "type": "LineString",
+        "coordinates": [
+          [92.900, 55.975],
+          [92.955, 55.970]
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "id": "edge_e04",
+      "properties": {
+        "kind": "edge",
+        "edge_id": "e04",
+        "from": "main_channel",
+        "to": "shallow_gate",
+        "surface": "shallow_water",
+        "distance_km": 2.4,
+        "risk": 0.48,
+        "requires_blower": false,
+        "confidence": 0.35,
+        "source": "manual_seed",
+        "explanation": "Короткий переход в мелководную зону."
+      },
+      "geometry": {
+        "type": "LineString",
+        "coordinates": [
+          [92.805, 56.012],
+          [92.835, 56.000]
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "id": "edge_e05",
+      "properties": {
+        "kind": "edge",
+        "edge_id": "e05",
+        "from": "shallow_gate",
+        "to": "reed_cut",
+        "surface": "reed",
+        "distance_km": 2.8,
+        "risk": 0.72,
+        "requires_blower": true,
+        "confidence": 0.3,
+        "source": "manual_seed",
+        "explanation": "Короткий рискованный проход, допустимый только с поддувом."
+      },
+      "geometry": {
+        "type": "LineString",
+        "coordinates": [
+          [92.835, 56.000],
+          [92.875, 55.990]
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "id": "edge_e06",
+      "properties": {
+        "kind": "edge",
+        "edge_id": "e06",
+        "from": "reed_cut",
+        "to": "finish_camp",
+        "surface": "shallow_water",
+        "distance_km": 4.4,
+        "risk": 0.52,
+        "requires_blower": false,
+        "confidence": 0.33,
+        "source": "manual_seed",
+        "explanation": "Выход из короткого прохода к финишу через мелководье."
+      },
+      "geometry": {
+        "type": "LineString",
+        "coordinates": [
+          [92.875, 55.990],
+          [92.920, 55.978],
+          [92.955, 55.970]
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "id": "edge_e07",
+      "properties": {
+        "kind": "edge",
+        "edge_id": "e07",
+        "from": "shallow_gate",
+        "to": "island_south",
+        "surface": "mud",
+        "distance_km": 3.1,
+        "risk": 0.82,
+        "requires_blower": true,
+        "confidence": 0.28,
+        "source": "manual_seed",
+        "explanation": "Очень рискованный илистый срез, нужен для проверки штрафов."
+      },
+      "geometry": {
+        "type": "LineString",
+        "coordinates": [
+          [92.835, 56.000],
+          [92.870, 55.985],
+          [92.900, 55.975]
+        ]
+      }
+    }
+  ]
+}

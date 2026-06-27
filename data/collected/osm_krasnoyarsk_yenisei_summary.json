@@ -1,0 +1,35 @@
+{
+  "schema_version": "0.1",
+  "raw_path": "data/raw/osm_krasnoyarsk_yenisei_overpass.json",
+  "collected_at": "2026-06-26",
+  "source": "OpenStreetMap via Overpass API",
+  "bbox": [
+    92.73,
+    55.95,
+    92.98,
+    56.05
+  ],
+  "navigation_grade": false,
+  "element_counts": {
+    "node": 15263,
+    "way": 727,
+    "relation": 20,
+    "other": 0
+  },
+  "relevant_tag_counts": {
+    "natural=water": 63,
+    "waterway=river": 30,
+    "waterway=riverbank": 0,
+    "water=river": 12,
+    "man_made=pier": 122,
+    "amenity=ferry_terminal": 3
+  },
+  "preview_feature_count": 195,
+  "attribution_required": true,
+  "attribution": "© OpenStreetMap contributors",
+  "notes": [
+    "Raw OSM data has been collected for the MVP seed area.",
+    "Preview GeoJSON contains only directly reconstructable ways with available coordinates.",
+    "This layer is not navigation-grade and must be reviewed before use."
+  ]
+}

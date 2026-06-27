@@ -1,0 +1,32 @@
+{
+  "type": "FeatureCollection",
+  "name": "demo_area_yenisei_krasnoyarsk_seed",
+  "features": [
+    {
+      "type": "Feature",
+      "id": "demo_area_01",
+      "properties": {
+        "name": "Демо-зона Енисей около Красноярска",
+        "purpose": "Стартовая область для MVP и первичной OSM/Overpass-выгрузки",
+        "bbox": [92.73, 55.95, 92.98, 56.05],
+        "source": "manual_seed",
+        "data_status": "seed",
+        "navigation_grade": false,
+        "updated_at": "2026-06-26",
+        "notes": "Граница выбрана как демонстрационная. Перед реализацией для реального кейса заменить на фактическую зону."
+      },
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [
+          [
+            [92.73, 55.95],
+            [92.98, 55.95],
+            [92.98, 56.05],
+            [92.73, 56.05],
+            [92.73, 55.95]
+          ]
+        ]
+      }
+    }
+  ]
+}
